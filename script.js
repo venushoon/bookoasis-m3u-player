@@ -54,7 +54,6 @@
         let hls = null;
         let epgTimer = null;
 
-        // 코어 프록시 연동
         async function resolveProxyUrl(url) {
             if (!url) return null;
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getProxyUrl === 'function') {
@@ -217,8 +216,17 @@
                     currentItem.group = groupMatch ? groupMatch[1] : '기타';
 
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
-                    const rawLogo = logoMatch ? logoMatch[1] : '';
-                    currentItem.logo = (rawLogo && rawLogo !== 'None' && rawLogo.startsWith('http')) ? rawLogo : '';
+                    let rawLogo = logoMatch ? logoMatch[1] : '';
+                    
+                    // Mixed Content 경고 방어: http:// 로고 URL을 https:// 로 자동 승격
+                    if (rawLogo && rawLogo !== 'None') {
+                        if (rawLogo.startsWith('http://')) {
+                            rawLogo = rawLogo.replace(/^http:\/\//i, 'https://');
+                        }
+                        currentItem.logo = rawLogo.startsWith('https://') ? rawLogo : '';
+                    } else {
+                        currentItem.logo = '';
+                    }
 
                     const nameParts = line.split(',');
                     currentItem.name = nameParts.length > 1 ? nameParts.slice(1).join(',').trim() : (currentItem.tvgName || '이름 없는 채널');
@@ -557,7 +565,6 @@
             }
         }
 
-        // 라이브 스트리밍 안정화 및 끊김 자동 복구 엔진
         async function playChannel(channel) {
             currentChannel = channel;
             if (currentChannelName) currentChannelName.textContent = channel.name;
@@ -575,14 +582,13 @@
                     hls.destroy();
                 }
 
-                // 라이브 버퍼 최적화 설정 (끊김 방지)
                 hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: true,
-                    backBufferLength: 30,         // 지난 버퍼 30초 유지 후 메모리 비움
-                    maxBufferLength: 30,          // 전방 30초만 버퍼링 (실시간성 유지)
+                    backBufferLength: 30,
+                    maxBufferLength: 30,
                     maxMaxBufferLength: 60,
-                    liveSyncDurationCount: 3,     // 라이브 엣지 3개 세그먼트 동기화
+                    liveSyncDurationCount: 3,
                     liveMaxLatencyDurationCount: 10,
                     manifestLoadingTimeOut: 10000,
                     manifestLoadingMaxRetry: 5,
@@ -599,16 +605,15 @@
                     videoElement.play().catch(() => {});
                 });
 
-                // 실시간 지능형 에러 복구 루틴
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (data.fatal) {
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
-                                console.warn('[ALIVE] 네트워크 세그먼트 지연 감지, 스트림 재연결 시도...');
+                                console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
                                 hls.startLoad();
                                 break;
                             case Hls.ErrorTypes.MEDIA_ERROR:
-                                console.warn('[ALIVE] 미디어 버퍼 스톨 감지, 자동 버퍼 복구 실행...');
+                                console.warn('[ALIVE] 버퍼 스톨 감지, 자동 버퍼 복구...');
                                 hls.recoverMediaError();
                                 break;
                             default:
@@ -630,7 +635,6 @@
             }
         }
 
-        // 브라우저 버퍼 정체(Stall) 시 미세 넛지
         videoElement.addEventListener('waiting', () => {
             if (hls && !videoElement.paused) {
                 hls.startLoad();
