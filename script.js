@@ -4,7 +4,7 @@
         window.__ALIVE_CLEANUP__();
     }
 
-    // 전역 세션 캐시 (메뉴 이동 시 재다운로드 방지)
+    // 전역 세션 캐시
     window.__ALIVE_CACHE__ = window.__ALIVE_CACHE__ || {
         channels: [],
         epgData1: {},
@@ -41,6 +41,7 @@
         const cfgEpgUrl1 = document.getElementById('cfg-epg-url1');
         const cfgEpgUrl2 = document.getElementById('cfg-epg-url2');
         const cfgEpgInterval = document.getElementById('cfg-epg-interval');
+        const cfgAutoResume = document.getElementById('cfg-auto-resume');
 
         const groupSelect = document.getElementById('m3u-group-select');
         const searchInput = document.getElementById('m3u-search-input');
@@ -71,6 +72,11 @@
         let epgTimer = null;
         let heartbeatTimer = null;
         let lastVisibleState = true;
+
+        // 자동 재생 설정 여부 확인
+        function isAutoResumeEnabled() {
+            return localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
+        }
 
         // PIP 활성화 여부 확인
         function isPipActive() {
@@ -114,6 +120,22 @@
             }
         }
 
+        // 초기화 화면으로 UI 리셋
+        function resetToInitialUI() {
+            stopPlayback();
+            currentChannel = null;
+            window.__ALIVE_CACHE__.lastChannel = null;
+            if (currentChannelName) currentChannelName.textContent = '선택된 채널 없음';
+            if (currentChannelGroup) currentChannelGroup.textContent = '그룹: -';
+            if (currentEpgInfo) currentEpgInfo.textContent = '편성 정보 없음';
+            if (videoOverlayMsg) {
+                videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
+                videoOverlayMsg.style.display = 'block';
+            }
+            updateFavButtons();
+            renderChannelList();
+        }
+
         // 전체 정리 루틴
         function cleanupAll() {
             stopPlayback();
@@ -133,7 +155,7 @@
 
         window.__ALIVE_CLEANUP__ = cleanupAll;
 
-        // 화면 복귀 시 자동 목록 렌더링 및 이전 채널 자동 재생
+        // 화면 복귀 시 라이프사이클 처리
         function onTabRestored() {
             if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
                 refreshAllSources(false);
@@ -142,17 +164,19 @@
                 applyFilter();
                 updateEpgBadgeStatus();
 
-                // 마지막 채널 자동 이어보기
-                if (currentChannel) {
-                    playChannel(currentChannel);
-                } else {
-                    const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
-                    if (lastUrl) {
-                        const found = allChannels.find(c => c.url === lastUrl);
-                        if (found) {
-                            playChannel(found);
+                // 설정에 따라 자동 재생 또는 초기 화면 유지
+                if (isAutoResumeEnabled()) {
+                    if (currentChannel) {
+                        playChannel(currentChannel);
+                    } else {
+                        const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
+                        if (lastUrl) {
+                            const found = allChannels.find(c => c.url === lastUrl);
+                            if (found) playChannel(found);
                         }
                     }
+                } else {
+                    resetToInitialUI();
                 }
             }
         }
@@ -272,6 +296,7 @@
             cfgEpgUrl1.value = localStorage.getItem('hoon_epg_url1') || '';
             cfgEpgUrl2.value = localStorage.getItem('hoon_epg_url2') || '';
             cfgEpgInterval.value = localStorage.getItem('hoon_epg_interval') || '60';
+            cfgAutoResume.checked = localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
             modalOverlay.style.display = 'flex';
         }
 
@@ -289,13 +314,12 @@
             localStorage.setItem('hoon_epg_url1', cfgEpgUrl1.value.trim());
             localStorage.setItem('hoon_epg_url2', cfgEpgUrl2.value.trim());
             localStorage.setItem('hoon_epg_interval', cfgEpgInterval.value);
+            localStorage.setItem('bookoasis_m3u_autoresume', cfgAutoResume.checked ? 'true' : 'false');
             closeModal();
-            refreshAllSources(true); // 설정 변경 시 강제 새로고침
+            refreshAllSources(true);
         };
 
-        // 소스 로드 (forceRefresh가 true일 때만 네트워크 다운로드)
         async function refreshAllSources(forceRefresh = false) {
-            // 캐시가 유효하고 강제 새로고침이 아닌 경우 즉시 캐시 데이터 사용
             if (!forceRefresh && window.__ALIVE_CACHE__.loaded && window.__ALIVE_CACHE__.channels.length > 0) {
                 allChannels = window.__ALIVE_CACHE__.channels;
                 epgData1 = window.__ALIVE_CACHE__.epgData1;
@@ -304,7 +328,12 @@
                 updateGroupSelect();
                 applyFilter();
                 updateEpgBadgeStatus();
-                if (currentChannel) playChannel(currentChannel);
+                
+                if (isAutoResumeEnabled() && currentChannel) {
+                    playChannel(currentChannel);
+                } else if (!isAutoResumeEnabled()) {
+                    resetToInitialUI();
+                }
                 return;
             }
 
@@ -339,13 +368,15 @@
                 updateGroupSelect();
                 applyFilter();
 
-                // 마지막 채널 복원
-                const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
-                if (lastUrl && !currentChannel) {
-                    const found = allChannels.find(c => c.url === lastUrl);
-                    if (found) {
-                        playChannel(found);
+                // 설정에 따른 초기 진입 처리
+                if (isAutoResumeEnabled()) {
+                    const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
+                    if (lastUrl && !currentChannel) {
+                        const found = allChannels.find(c => c.url === lastUrl);
+                        if (found) playChannel(found);
                     }
+                } else {
+                    resetToInitialUI();
                 }
             } catch (err) {
                 console.error('[ALIVE Player] 로드 에러:', err);

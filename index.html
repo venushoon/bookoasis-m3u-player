@@ -1,7 +1,7 @@
 <div class="m3u-container">
     <!-- 좌측 사이드 패널 -->
     <aside class="m3u-sidebar">
-        <!-- 상단 헤더: 깔끔한 액션 버튼 툴바 -->
+        <!-- 상단 헤더: 액션 버튼 툴바 -->
         <div class="m3u-sidebar-header">
             <div class="m3u-action-toolbar">
                 <button id="btn-open-sources" class="m3u-btn m3u-btn-primary" title="M3U 및 EPG 주소 관리">
@@ -74,7 +74,7 @@
     <div id="m3u-modal-overlay" class="m3u-modal-overlay" style="display: none;">
         <div class="m3u-modal-content">
             <div class="m3u-modal-header">
-                <h3><i class="fa-solid fa-sliders"></i> ALIVE 플레이어 소스 관리</h3>
+                <h3><i class="fa-solid fa-sliders"></i> ALIVE 플레이어 설정</h3>
                 <button id="btn-close-modal" class="m3u-modal-close">&times;</button>
             </div>
             
@@ -117,6 +117,18 @@
                             <option value="1440">24시간마다 자동 갱신</option>
                             <option value="0">자동 갱신 안 함 (수동)</option>
                         </select>
+                    </div>
+                </div>
+
+                <!-- 4. 재생 동작 옵션 -->
+                <div class="m3u-modal-section">
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-play"></i> 재생 동작 설정</h4>
+                    <div class="m3u-checkbox-wrapper">
+                        <label class="m3u-checkbox-label">
+                            <input type="checkbox" id="cfg-auto-resume" class="m3u-checkbox">
+                            <span class="m3u-checkbox-text">메뉴 재진입 시 마지막 시청 채널 자동 재생</span>
+                        </label>
+                        <span class="m3u-checkbox-desc">체크를 해제하면 다른 메뉴에서 돌아왔을 때 대기 상태의 초기 화면으로 시작합니다.</span>
                     </div>
                 </div>
             </div>
