@@ -55,6 +55,7 @@
         let hls = null;
         let epgTimer = null;
         let heartbeatTimer = null;
+        let lastVisibleState = true;
 
         // PIP 활성화 여부 판별
         function isPipActive() {
@@ -112,11 +113,49 @@
             }
         }
 
-        // 200ms 주기로 가시성 감시 (PIP 모드일 때는 화면이 가려져도 유지)
+        // 화면 복귀 시 자동 목록/상태 복원 루틴
+        function onTabRestored() {
+            if (allChannels.length === 0) {
+                refreshAllSources();
+            } else {
+                updateGroupSelect();
+                applyFilter();
+                
+                // 이전 선택 채널 복원 표시
+                const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
+                if (lastUrl && !currentChannel) {
+                    const found = allChannels.find(c => c.url === lastUrl);
+                    if (found) {
+                        currentChannel = found;
+                        if (currentChannelName) currentChannelName.textContent = found.name;
+                        if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${found.group} (${found.source || '기본'})`;
+                        if (videoOverlayMsg) {
+                            videoOverlayMsg.textContent = '채널을 클릭하여 재생을 시작하세요.';
+                            videoOverlayMsg.style.display = 'block';
+                        }
+                        updateFavButtons();
+                        updateCurrentEpgDisplay(found);
+                    }
+                }
+            }
+        }
+
+        // 200ms 주기로 가시성 감시 및 화면 복귀/이탈 라이프사이클 처리
         heartbeatTimer = setInterval(() => {
-            if (!isElementVisible(container) && !isPipActive()) {
-                if (hls || (videoElement && !videoElement.paused)) {
-                    stopPlayback();
+            const currentlyVisible = isElementVisible(container);
+
+            // 1. 화면에 다시 들어왔을 때 자동 복구
+            if (!lastVisibleState && currentlyVisible) {
+                lastVisibleState = true;
+                onTabRestored();
+            }
+            // 2. 화면을 벗어났을 때 오디오 정지
+            else if (lastVisibleState && !currentlyVisible) {
+                lastVisibleState = false;
+                if (!isPipActive()) {
+                    if (hls || (videoElement && !videoElement.paused)) {
+                        stopPlayback();
+                    }
                 }
             }
         }, 200);
@@ -256,10 +295,16 @@
 
                 allChannels = [...res1, ...res2];
                 if (allChannels.length === 0) {
-                    if (videoOverlayMsg) videoOverlayMsg.textContent = '[소스 관리]에서 M3U 주소를 등록해 주세요.';
+                    if (videoOverlayMsg) {
+                        videoOverlayMsg.textContent = '[소스 관리]에서 M3U 주소를 등록해 주세요.';
+                        videoOverlayMsg.style.display = 'block';
+                    }
                     channelCountBadge.textContent = '채널 0개';
                 } else {
-                    if (videoOverlayMsg) videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
+                    if (!currentChannel && videoOverlayMsg) {
+                        videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
+                        videoOverlayMsg.style.display = 'block';
+                    }
                 }
 
                 updateGroupSelect();
@@ -659,6 +704,8 @@
             if (!isElementVisible(container) && !isPipActive()) return;
 
             currentChannel = channel;
+            localStorage.setItem('bookoasis_m3u_last_url', channel.url);
+
             if (currentChannelName) currentChannelName.textContent = channel.name;
             if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${channel.group} (${channel.source || '기본'})`;
             if (videoOverlayMsg) videoOverlayMsg.style.display = 'none';
