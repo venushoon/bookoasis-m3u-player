@@ -42,50 +42,56 @@
 
         let allChannels = [];
         let filteredChannels = [];
-        let epgData = {}; // { channelIdOrName: [ { start, stop, title } ] }
+        let epgData = {};
         let currentChannel = null;
         let hls = null;
 
-        // 설정 토글
         btnToggleSettings.onclick = () => {
             const isHidden = settingsPanel.style.display === 'none';
             settingsPanel.style.display = isHidden ? 'flex' : 'none';
         };
 
-        // 프록시 URL 래퍼
+        // 안전한 프록시 URL 생성 헬퍼
         function wrapProxy(url) {
-            if (corsProxyCheck && corsProxyCheck.checked) {
-                const proxyBase = corsProxyInput.value.trim() || DEFAULT_PROXY_PRESET;
+            if (!corsProxyCheck || !corsProxyCheck.checked) {
+                return url;
+            }
+            let proxyBase = (corsProxyInput.value || '').trim();
+            if (!proxyBase) proxyBase = DEFAULT_PROXY_PRESET;
+
+            if (proxyBase.includes('=')) {
                 return proxyBase + encodeURIComponent(url);
             }
-            return url;
+            return proxyBase.endsWith('/') ? proxyBase + url : proxyBase + '/' + url;
         }
 
-        // 기본값 불러오기
         function loadSavedDefaults() {
             const savedM3u = localStorage.getItem('bookoasis_m3u_url') || '';
             const savedEpg = localStorage.getItem('bookoasis_epg_url') || '';
-            const savedProxy = localStorage.getItem('bookoasis_cors_proxy') || DEFAULT_PROXY_PRESET;
+            const savedProxy = localStorage.getItem('bookoasis_cors_proxy') || '';
             const savedUseProxy = localStorage.getItem('bookoasis_use_proxy');
 
-            m3uUrlInput.value = savedM3u;
-            epgUrlInput.value = savedEpg;
-            corsProxyInput.value = savedProxy;
+            if (savedM3u) m3uUrlInput.value = savedM3u;
+            if (savedEpg) epgUrlInput.value = savedEpg;
+            if (savedProxy) corsProxyInput.value = savedProxy;
+            
+            // 기본값은 프록시 해제(false)로 안전하게 초기화
             if (savedUseProxy !== null) {
                 corsProxyCheck.checked = (savedUseProxy === 'true');
+            } else {
+                corsProxyCheck.checked = false;
             }
 
             if (savedM3u) loadM3U(savedM3u);
             if (savedEpg) loadEPG(savedEpg);
         }
 
-        // 기본값 저장
         btnSaveDefaults.onclick = () => {
             localStorage.setItem('bookoasis_m3u_url', m3uUrlInput.value.trim());
             localStorage.setItem('bookoasis_epg_url', epgUrlInput.value.trim());
             localStorage.setItem('bookoasis_cors_proxy', corsProxyInput.value.trim());
             localStorage.setItem('bookoasis_use_proxy', corsProxyCheck.checked ? 'true' : 'false');
-            alert('현재 M3U, EPG 및 프록시 설정이 기본값으로 저장되었습니다.');
+            alert('M3U, EPG 및 프록시 설정이 브라우저에 저장되었습니다.');
         };
 
         btnLoadM3u.onclick = () => {
@@ -102,7 +108,6 @@
             if (e.key === 'Enter') btnLoadM3u.click();
         };
 
-        // M3U 파서
         async function loadM3U(rawUrl) {
             showLoading(true);
             if (videoOverlayMsg) {
@@ -113,7 +118,7 @@
             try {
                 const targetUrl = wrapProxy(rawUrl);
                 const response = await fetch(targetUrl);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status} (${response.statusText})`);
                 const textData = await response.text();
                 allChannels = parseM3U(textData);
 
@@ -125,7 +130,7 @@
             } catch (error) {
                 console.error('[M3U Player] M3U 로드 실패:', error);
                 if (videoOverlayMsg) {
-                    videoOverlayMsg.textContent = 'M3U 로드 실패: 프록시 주소 및 URL을 확인하세요.';
+                    videoOverlayMsg.textContent = 'M3U 로드 실패: 주소 및 프록시 체크 여부를 확인하세요.';
                     videoOverlayMsg.style.display = 'block';
                 }
                 if (channelCountBadge) channelCountBadge.textContent = '로드 실패';
@@ -165,7 +170,6 @@
             return channels;
         }
 
-        // XMLTV EPG 파서
         async function loadEPG(rawUrl) {
             epgStatusBadge.textContent = 'EPG 로딩 중...';
             try {
@@ -180,7 +184,7 @@
                 if (currentChannel) updateCurrentEpgDisplay(currentChannel);
             } catch (err) {
                 console.warn('[M3U Player] EPG 로드 실패:', err);
-                epgStatusBadge.textContent = 'EPG 로드 실패';
+                epgStatusBadge.textContent = 'EPG 미등록';
                 epgStatusBadge.classList.remove('active');
             }
         }
@@ -211,7 +215,6 @@
         }
 
         function parseXMLTVDate(dateStr) {
-            // YYYYMMDDHHMMSS +/-HHMM 파싱
             const raw = dateStr.split(' ')[0];
             const y = raw.substring(0, 4);
             const m = raw.substring(4, 6) - 1;
@@ -219,7 +222,7 @@
             const h = raw.substring(8, 10);
             const min = raw.substring(10, 12);
             const s = raw.substring(12, 14) || '00';
-            return new Date(Date.UTC(y, m, d, h - 9, min, s)); // KST 기준 정규화
+            return new Date(Date.UTC(y, m, d, h - 9, min, s));
         }
 
         function getNowProgram(channel) {
@@ -327,7 +330,8 @@
 
             const streamUrl = channel.url;
             const useProxy = corsProxyCheck && corsProxyCheck.checked;
-            const proxyBase = corsProxyInput.value.trim() || DEFAULT_PROXY_PRESET;
+            let proxyBase = (corsProxyInput.value || '').trim();
+            if (!proxyBase) proxyBase = DEFAULT_PROXY_PRESET;
 
             if (window.Hls && Hls.isSupported()) {
                 if (hls) hls.destroy();
@@ -336,7 +340,8 @@
                 if (useProxy) {
                     hlsConfig.xhrSetup = function (xhr, url) {
                         if (!url.startsWith(proxyBase) && url.startsWith('http')) {
-                            xhr.open('GET', proxyBase + encodeURIComponent(url), true);
+                            const proxiedUrl = proxyBase.includes('=') ? proxyBase + encodeURIComponent(url) : (proxyBase.endsWith('/') ? proxyBase + url : proxyBase + '/' + url);
+                            xhr.open('GET', proxiedUrl, true);
                         }
                     };
                 }
