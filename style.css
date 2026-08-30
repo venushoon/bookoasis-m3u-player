@@ -6,12 +6,13 @@
     background: var(--app-bg-main);
     color: var(--app-text-primary);
     overflow: hidden;
+    position: relative;
 }
 
 /* 좌측 사이드 패널 */
 .m3u-sidebar {
-    width: 380px;
-    min-width: 320px;
+    width: 390px;
+    min-width: 330px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -28,13 +29,26 @@
     border-bottom: 1px solid var(--app-border-light);
 }
 
-.m3u-input-group, .m3u-filter-group {
+.m3u-action-toolbar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.m3u-action-toolbar .m3u-btn-primary {
+    flex: 1.4;
+}
+
+.m3u-action-toolbar .m3u-btn-cyan {
+    flex: 1.2;
+}
+
+.m3u-filter-group {
     display: flex;
     gap: 6px;
 }
 
 .m3u-input, .m3u-select {
-    flex: 1;
     background: var(--app-input-bg);
     color: var(--app-text-primary);
     border: 1px solid var(--app-border);
@@ -49,6 +63,14 @@
     border-color: var(--app-accent);
 }
 
+.m3u-filter-group .m3u-select {
+    flex: 1;
+}
+
+.m3u-filter-group .m3u-input {
+    flex: 1.3;
+}
+
 .m3u-btn {
     border: none;
     border-radius: 6px;
@@ -56,20 +78,30 @@
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s ease, opacity 0.2s ease;
+    transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     white-space: nowrap;
 }
 
 .m3u-btn-primary {
-    background: var(--app-accent);
+    background: #a855f7;
     color: #ffffff;
 }
 
 .m3u-btn-primary:hover {
-    background: var(--app-accent-hover);
+    background: #9333ea;
+}
+
+.m3u-btn-cyan {
+    background: #06b6d4;
+    color: #ffffff;
+}
+
+.m3u-btn-cyan:hover {
+    background: #0891b2;
 }
 
 .m3u-btn-secondary {
@@ -82,6 +114,11 @@
     background: var(--app-bg-card-hover);
 }
 
+.m3u-btn-icon {
+    padding: 8px 12px;
+    width: 38px;
+}
+
 .m3u-btn-accent {
     background: #10b981;
     color: #ffffff;
@@ -91,56 +128,19 @@
     background: #059669;
 }
 
-/* 설정 패널 */
-.m3u-settings-panel {
-    background: var(--app-bg-card);
-    border: 1px solid var(--app-border);
-    border-radius: 8px;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 4px;
-}
-
-.m3u-setting-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.m3u-setting-info {
-    font-size: 0.72rem;
-    color: var(--app-text-muted);
-    line-height: 1.3;
-}
-
-.m3u-setting-item-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 4px;
-}
-
-.m3u-label {
-    font-size: 0.75rem;
-    color: var(--app-text-muted);
-    font-weight: 600;
-}
-
-/* 채널 정보 및 EPG 상태바 */
+/* 상태 정보 바 */
 .m3u-channel-info-bar {
     padding: 8px 12px;
     font-size: 0.8rem;
     color: var(--app-text-muted);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     border-bottom: 1px solid var(--app-border-light);
 }
 
-.m3u-epg-badge {
-    font-size: 0.75rem;
+.m3u-badge {
+    font-size: 0.72rem;
     padding: 2px 6px;
     border-radius: 4px;
     background: var(--app-bg-card);
@@ -148,15 +148,21 @@
     font-weight: 600;
 }
 
-.m3u-epg-badge.active {
+.m3u-badge.active {
     background: var(--app-accent);
     color: #ffffff;
     border-color: var(--app-accent);
 }
 
+.m3u-badge.cyan {
+    background: #06b6d4;
+    color: #ffffff;
+    border-color: #06b6d4;
+}
+
 .m3u-spinner {
     color: var(--app-accent);
-    font-weight: bold;
+    margin-left: auto;
 }
 
 /* 채널 리스트 */
@@ -171,7 +177,7 @@
 .m3u-channel-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     padding: 8px 10px;
     border-radius: 6px;
     margin-bottom: 4px;
@@ -194,6 +200,44 @@
 .m3u-channel-item.active .channel-group,
 .m3u-channel-item.active .channel-epg-now {
     color: rgba(255, 255, 255, 0.9);
+}
+
+.channel-fav-btn {
+    background: none;
+    border: none;
+    color: var(--app-text-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s;
+}
+
+.channel-fav-btn.active {
+    color: #f59e0b;
+}
+
+.channel-health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #64748b;
+    flex-shrink: 0;
+}
+
+.channel-health-dot.online {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.channel-health-dot.offline {
+    background: #ef4444;
+}
+
+.channel-health-dot.checking {
+    background: #f59e0b;
 }
 
 .channel-logo {
@@ -227,16 +271,16 @@
 }
 
 .channel-epg-now {
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     color: #10b981;
     font-weight: 500;
-    margin-top: 3px;
+    margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* 우측 비디오 메인 플레이어 */
+/* 우측 비디오 뷰어 */
 .m3u-main-player {
     flex: 1;
     display: flex;
@@ -286,7 +330,20 @@
 .current-channel-top {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+}
+
+.m3u-btn-fav {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    color: var(--app-text-muted);
+    cursor: pointer;
+    padding: 0;
+}
+
+.m3u-btn-fav.active {
+    color: #f59e0b;
 }
 
 .current-title {
@@ -304,4 +361,115 @@
     margin-top: 4px;
     font-size: 0.82rem;
     color: var(--app-text-secondary);
+}
+
+/* 모달 다이얼로그 */
+.m3u-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.m3u-modal-content {
+    background: var(--app-bg-card);
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    width: 520px;
+    max-width: 90%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.m3u-modal-header {
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--app-border-light);
+}
+
+.m3u-modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--app-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.m3u-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--app-text-muted);
+    cursor: pointer;
+}
+
+.m3u-modal-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.m3u-modal-section {
+    background: var(--app-bg-sidebar);
+    border: 1px solid var(--app-border-light);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.m3u-modal-section-title {
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--app-accent);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.m3u-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.m3u-form-group label {
+    font-size: 0.78rem;
+    color: var(--app-text-muted);
+    font-weight: 600;
+}
+
+.m3u-modal-footer {
+    padding: 12px 18px;
+    border-top: 1px solid var(--app-border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.m3u-modal-tip {
+    font-size: 0.72rem;
+    color: var(--app-text-muted);
+}
+
+.m3u-modal-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
 }

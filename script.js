@@ -11,43 +11,49 @@
     }
 
     function initM3UPlayer() {
-        const m3uUrlInput = document.getElementById('m3u-url-input');
-        const btnLoadM3u = document.getElementById('btn-load-m3u');
-        const btnToggleSettings = document.getElementById('btn-toggle-settings');
-        const settingsPanel = document.getElementById('m3u-settings-panel');
-        
-        const epgUrlInput = document.getElementById('epg-url-input');
-        const btnLoadEpg = document.getElementById('btn-load-epg');
-        const btnSaveDefaults = document.getElementById('btn-save-defaults');
+        const btnOpenSources = document.getElementById('btn-open-sources');
+        const btnCheckHealth = document.getElementById('btn-check-health');
+        const btnRefreshAll = document.getElementById('btn-refresh-all');
+
+        const modalOverlay = document.getElementById('m3u-modal-overlay');
+        const btnCloseModal = document.getElementById('btn-close-modal');
+        const btnModalCancel = document.getElementById('btn-modal-cancel');
+        const btnModalSave = document.getElementById('btn-modal-save');
+
+        const cfgM3uUrl1 = document.getElementById('cfg-m3u-url1');
+        const cfgM3uUrl2 = document.getElementById('cfg-m3u-url2');
+        const cfgEpgUrl1 = document.getElementById('cfg-epg-url1');
+        const cfgEpgUrl2 = document.getElementById('cfg-epg-url2');
+        const cfgEpgInterval = document.getElementById('cfg-epg-interval');
 
         const groupSelect = document.getElementById('m3u-group-select');
         const searchInput = document.getElementById('m3u-search-input');
         const channelList = document.getElementById('m3u-channel-list');
         const channelCountBadge = document.getElementById('channel-count-badge');
         const epgStatusBadge = document.getElementById('epg-status-badge');
+        const healthStatusBadge = document.getElementById('health-status-badge');
         const loadingSpinner = document.getElementById('loading-spinner');
 
         const videoElement = document.getElementById('video-element');
         const videoOverlayMsg = document.getElementById('video-overlay-msg');
+        const btnFavCurrent = document.getElementById('btn-fav-current');
         const currentChannelName = document.getElementById('current-channel-name');
         const currentChannelGroup = document.getElementById('current-channel-group');
         const currentEpgInfo = document.getElementById('current-epg-info');
         const btnReloadStream = document.getElementById('btn-reload-stream');
 
-        if (!m3uUrlInput || !videoElement) return;
+        if (!btnOpenSources || !videoElement) return;
 
         let allChannels = [];
         let filteredChannels = [];
-        let epgData = {}; 
+        let epgData1 = {}; 
+        let epgData2 = {}; 
+        let channelHealth = {}; 
+        let favorites = []; 
         let currentChannel = null;
         let hls = null;
+        let epgTimer = null;
 
-        btnToggleSettings.onclick = () => {
-            const isHidden = settingsPanel.style.display === 'none';
-            settingsPanel.style.display = isHidden ? 'flex' : 'none';
-        };
-
-        // BookOasis 정규 텍스트/데이터 프록시 URL 획득 헬퍼
         async function resolveProxyUrl(url) {
             if (!url) return null;
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getProxyUrl === 'function') {
@@ -57,7 +63,6 @@
             return url;
         }
 
-        // BookOasis 정규 HLS 스트림 프록시 URL 획득 헬퍼
         async function resolveStreamUrl(url) {
             if (!url) return null;
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getStreamProxyUrl === 'function') {
@@ -77,69 +82,120 @@
                 .toLowerCase();
         }
 
-        function loadSavedDefaults() {
-            const savedM3u = localStorage.getItem('bookoasis_m3u_url') || '';
-            const savedEpg = localStorage.getItem('bookoasis_epg_url') || '';
-
-            if (savedM3u) m3uUrlInput.value = savedM3u;
-            if (savedEpg) epgUrlInput.value = savedEpg;
-
-            if (savedM3u) loadM3U(savedM3u);
-            if (savedEpg) loadEPG(savedEpg);
+        function loadFavorites() {
+            try {
+                favorites = JSON.parse(localStorage.getItem('hoon_m3u_favorites') || '[]');
+            } catch (e) {
+                favorites = [];
+            }
         }
 
-        btnSaveDefaults.onclick = () => {
-            localStorage.setItem('bookoasis_m3u_url', m3uUrlInput.value.trim());
-            localStorage.setItem('bookoasis_epg_url', epgUrlInput.value.trim());
-            alert('M3U 및 EPG 주소가 기본값으로 저장되었습니다.');
-        };
-
-        btnLoadM3u.onclick = () => {
-            const url = m3uUrlInput.value.trim();
-            if (url) loadM3U(url);
-        };
-
-        btnLoadEpg.onclick = () => {
-            const url = epgUrlInput.value.trim();
-            if (url) loadEPG(url);
-        };
-
-        m3uUrlInput.onkeydown = (e) => {
-            if (e.key === 'Enter') btnLoadM3u.click();
-        };
-
-        async function loadM3U(rawUrl) {
-            showLoading(true);
-            if (videoOverlayMsg) {
-                videoOverlayMsg.textContent = 'M3U 목록을 불러오는 중입니다...';
-                videoOverlayMsg.style.display = 'block';
+        function toggleFavorite(channel) {
+            const idx = favorites.indexOf(channel.name);
+            if (idx > -1) {
+                favorites.splice(idx, 1);
+            } else {
+                favorites.push(channel.name);
             }
+            localStorage.setItem('hoon_m3u_favorites', JSON.stringify(favorites));
+            updateFavButtons();
+            if (groupSelect.value === 'FAVORITES') {
+                applyFilter();
+            } else {
+                renderChannelList();
+            }
+        }
+
+        function updateFavButtons() {
+            if (!currentChannel) {
+                btnFavCurrent.classList.remove('active');
+                btnFavCurrent.innerHTML = '<i class="fa-regular fa-star"></i>';
+                return;
+            }
+            const isFav = favorites.includes(currentChannel.name);
+            btnFavCurrent.classList.toggle('active', isFav);
+            btnFavCurrent.innerHTML = isFav ? '<i class="fa-solid fa-star"></i>' : '<i class="fa-regular fa-star"></i>';
+        }
+
+        btnFavCurrent.onclick = () => {
+            if (currentChannel) toggleFavorite(currentChannel);
+        };
+
+        function openModal() {
+            cfgM3uUrl1.value = localStorage.getItem('hoon_m3u_url1') || '';
+            cfgM3uUrl2.value = localStorage.getItem('hoon_m3u_url2') || '';
+            cfgEpgUrl1.value = localStorage.getItem('hoon_epg_url1') || '';
+            cfgEpgUrl2.value = localStorage.getItem('hoon_epg_url2') || '';
+            cfgEpgInterval.value = localStorage.getItem('hoon_epg_interval') || '60';
+            modalOverlay.style.display = 'flex';
+        }
+
+        function closeModal() {
+            modalOverlay.style.display = 'none';
+        }
+
+        btnOpenSources.onclick = openModal;
+        btnCloseModal.onclick = closeModal;
+        btnModalCancel.onclick = closeModal;
+
+        btnModalSave.onclick = () => {
+            localStorage.setItem('hoon_m3u_url1', cfgM3uUrl1.value.trim());
+            localStorage.setItem('hoon_m3u_url2', cfgM3uUrl2.value.trim());
+            localStorage.setItem('hoon_epg_url1', cfgEpgUrl1.value.trim());
+            localStorage.setItem('hoon_epg_url2', cfgEpgUrl2.value.trim());
+            localStorage.setItem('hoon_epg_interval', cfgEpgInterval.value);
+            closeModal();
+            refreshAllSources();
+        };
+
+        async function refreshAllSources() {
+            showLoading(true);
+            allChannels = [];
+            channelHealth = {};
+            const url1 = localStorage.getItem('hoon_m3u_url1') || '';
+            const url2 = localStorage.getItem('hoon_m3u_url2') || '';
 
             try {
-                const targetUrl = await resolveProxyUrl(rawUrl);
-                const response = await fetch(targetUrl);
-                if (!response.ok) throw new Error(`HTTP ${response.status} (${response.statusText})`);
-                const textData = await response.text();
-                allChannels = parseM3U(textData);
+                const p1 = url1 ? fetchAndParseM3U(url1, '소스1') : Promise.resolve([]);
+                const p2 = url2 ? fetchAndParseM3U(url2, '소스2') : Promise.resolve([]);
+                const [res1, res2] = await Promise.all([p1, p2]);
 
-                if (allChannels.length === 0) throw new Error('유효한 채널이 없습니다.');
+                allChannels = [...res1, ...res2];
+                if (allChannels.length === 0) {
+                    if (videoOverlayMsg) videoOverlayMsg.textContent = '[소스 관리]에서 M3U 주소를 등록해 주세요.';
+                    channelCountBadge.textContent = '채널 0개';
+                } else {
+                    if (videoOverlayMsg) videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
+                }
 
                 updateGroupSelect();
                 applyFilter();
-                if (videoOverlayMsg) videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
-            } catch (error) {
-                console.error('[M3U Player] M3U 로드 실패:', error);
-                if (videoOverlayMsg) {
-                    videoOverlayMsg.textContent = 'M3U 로드 실패: [설정 > 외부 도메인] 등록 여부 및 URL을 확인하세요.';
-                    videoOverlayMsg.style.display = 'block';
-                }
-                if (channelCountBadge) channelCountBadge.textContent = '로드 실패';
+            } catch (err) {
+                console.error('[M3U Player] 로드 에러:', err);
             } finally {
                 showLoading(false);
             }
+
+            loadAllEPGs();
+            setupEpgInterval();
         }
 
-        function parseM3U(content) {
+        btnRefreshAll.onclick = refreshAllSources;
+
+        async function fetchAndParseM3U(rawUrl, sourceLabel) {
+            try {
+                const targetUrl = await resolveProxyUrl(rawUrl);
+                const response = await fetch(targetUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const textData = await response.text();
+                return parseM3U(textData, sourceLabel);
+            } catch (e) {
+                console.warn(`[M3U Player] ${sourceLabel} 로드 실패:`, e);
+                return [];
+            }
+        }
+
+        function parseM3U(content, sourceLabel) {
             const lines = content.split(/\r?\n/);
             const channels = [];
             let currentItem = null;
@@ -149,7 +205,7 @@
                 if (!line) continue;
 
                 if (line.startsWith('#EXTINF:')) {
-                    currentItem = {};
+                    currentItem = { source: sourceLabel };
                     const idMatch = line.match(/tvg-id="([^"]+)"/i);
                     currentItem.id = idMatch ? idMatch[1] : '';
 
@@ -174,24 +230,42 @@
             return channels;
         }
 
-        async function loadEPG(rawUrl) {
-            epgStatusBadge.textContent = 'EPG 로딩 중...';
+        async function loadAllEPGs() {
+            const epg1 = localStorage.getItem('hoon_epg_url1') || '';
+            const epg2 = localStorage.getItem('hoon_epg_url2') || '';
+
+            if (!epg1 && !epg2) {
+                epgStatusBadge.textContent = 'EPG 미등록';
+                epgStatusBadge.classList.remove('active');
+                return;
+            }
+
+            epgStatusBadge.textContent = 'EPG 갱신 중...';
+            const p1 = epg1 ? fetchAndParseEPG(epg1) : Promise.resolve({});
+            const p2 = epg2 ? fetchAndParseEPG(epg2) : Promise.resolve({});
+
+            const [data1, data2] = await Promise.all([p1, p2]);
+            epgData1 = data1;
+            epgData2 = data2;
+
+            const total = Object.values(epgData1).reduce((s, a) => s + a.length, 0) + Object.values(epgData2).reduce((s, a) => s + a.length, 0);
+            epgStatusBadge.textContent = `EPG 연동됨 (${total}개)`;
+            epgStatusBadge.classList.add('active');
+
+            renderChannelList();
+            if (currentChannel) updateCurrentEpgDisplay(currentChannel);
+        }
+
+        async function fetchAndParseEPG(rawUrl) {
             try {
                 const targetUrl = await resolveProxyUrl(rawUrl);
                 const res = await fetch(targetUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const xmlText = await res.text();
-                parseXMLTV(xmlText);
-                
-                const totalProgs = Object.values(epgData).reduce((sum, arr) => sum + arr.length, 0);
-                epgStatusBadge.textContent = `EPG 연동됨 (${totalProgs}개)`;
-                epgStatusBadge.classList.add('active');
-                renderChannelList();
-                if (currentChannel) updateCurrentEpgDisplay(currentChannel);
+                return parseXMLTV(xmlText);
             } catch (err) {
-                console.error('[M3U Player] EPG 로드 실패:', err);
-                epgStatusBadge.textContent = 'EPG 로드 실패';
-                epgStatusBadge.classList.remove('active');
+                console.warn('[M3U Player] EPG 가져오기 실패:', err);
+                return {};
             }
         }
 
@@ -207,9 +281,7 @@
 
             let tz = '+09:00';
             const tzMatch = clean.match(/([+-]\d{2})(\d{2})$/);
-            if (tzMatch) {
-                tz = `${tzMatch[1]}:${tzMatch[2]}`;
-            }
+            if (tzMatch) tz = `${tzMatch[1]}:${tzMatch[2]}`;
 
             const iso = `${y}-${m}-${d}T${h}:${min}:${s}${tz}`;
             const parsed = new Date(iso);
@@ -222,7 +294,6 @@
             
             const channelNodes = xmlDoc.getElementsByTagName('channel');
             const aliasMap = {}; 
-            
             for (let i = 0; i < channelNodes.length; i++) {
                 const cNode = channelNodes[i];
                 const cId = cNode.getAttribute('id');
@@ -243,7 +314,7 @@
             }
 
             const programmes = xmlDoc.getElementsByTagName('programme');
-            epgData = {};
+            const resultData = {};
 
             for (let i = 0; i < programmes.length; i++) {
                 const prog = programmes[i];
@@ -260,24 +331,30 @@
                         title: title
                     };
 
-                    if (!epgData[channelAttr]) epgData[channelAttr] = [];
-                    epgData[channelAttr].push(item);
+                    if (!resultData[channelAttr]) resultData[channelAttr] = [];
+                    resultData[channelAttr].push(item);
 
                     const cleanKey = cleanChannelName(channelAttr);
-                    if (cleanKey && !epgData[cleanKey]) epgData[cleanKey] = epgData[channelAttr];
+                    if (cleanKey && !resultData[cleanKey]) resultData[cleanKey] = resultData[channelAttr];
 
                     if (aliasMap[channelAttr]) {
                         aliasMap[channelAttr].forEach(alias => {
-                            if (alias && !epgData[alias]) {
-                                epgData[alias] = epgData[channelAttr];
-                            }
+                            if (alias && !resultData[alias]) resultData[alias] = resultData[channelAttr];
                         });
                     }
                 }
             }
+            return resultData;
         }
 
         function getNowProgram(channel) {
+            const p1 = queryEpg(channel, epgData1);
+            if (p1) return p1;
+            return queryEpg(channel, epgData2);
+        }
+
+        function queryEpg(channel, dataMap) {
+            if (!dataMap || Object.keys(dataMap).length === 0) return null;
             const candidateKeys = [
                 channel.id,
                 cleanChannelName(channel.id),
@@ -289,8 +366,8 @@
 
             let programList = null;
             for (const key of candidateKeys) {
-                if (key && epgData[key]) {
-                    programList = epgData[key];
+                if (key && dataMap[key]) {
+                    programList = dataMap[key];
                     break;
                 }
             }
@@ -298,9 +375,9 @@
             if (!programList) {
                 const targetClean = cleanChannelName(channel.name);
                 if (targetClean) {
-                    for (const epgKey of Object.keys(epgData)) {
+                    for (const epgKey of Object.keys(dataMap)) {
                         if (epgKey.includes(targetClean) || targetClean.includes(epgKey)) {
-                            programList = epgData[epgKey];
+                            programList = dataMap[epgKey];
                             break;
                         }
                     }
@@ -308,21 +385,80 @@
             }
 
             if (!programList || programList.length === 0) return null;
-
             const now = new Date();
             return programList.find(p => now >= p.start && now <= p.stop) || null;
         }
 
+        function setupEpgInterval() {
+            if (epgTimer) clearInterval(epgTimer);
+            const mins = parseInt(localStorage.getItem('hoon_epg_interval') || '60', 10);
+            if (mins > 0) {
+                epgTimer = setInterval(() => {
+                    console.log('[M3U Player] EPG 자동 갱신 실행');
+                    loadAllEPGs();
+                }, mins * 60 * 1000);
+            }
+        }
+
+        btnCheckHealth.onclick = async () => {
+            if (filteredChannels.length === 0) return;
+            healthStatusBadge.style.display = 'inline-block';
+            healthStatusBadge.textContent = '점검 중 (0%)';
+            btnCheckHealth.disabled = true;
+
+            const total = filteredChannels.length;
+            let finished = 0;
+
+            const queue = [...filteredChannels];
+            const workers = Array(4).fill(null).map(async () => {
+                while (queue.length > 0) {
+                    const item = queue.shift();
+                    channelHealth[item.url] = 'checking';
+                    renderChannelList();
+
+                    try {
+                        const proxied = await resolveStreamUrl(item.url);
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 4000);
+                        const resp = await fetch(proxied, { method: 'GET', signal: controller.signal });
+                        clearTimeout(timeoutId);
+                        channelHealth[item.url] = (resp.ok || resp.status === 206) ? 'online' : 'offline';
+                    } catch (e) {
+                        channelHealth[item.url] = 'offline';
+                    }
+
+                    finished++;
+                    healthStatusBadge.textContent = `점검 중 (${Math.round((finished / total) * 100)}%)`;
+                    renderChannelList();
+                }
+            });
+
+            await Promise.all(workers);
+            healthStatusBadge.textContent = '점검 완료';
+            healthStatusBadge.classList.add('cyan');
+            btnCheckHealth.disabled = false;
+        };
+
         function updateGroupSelect() {
             if (!groupSelect) return;
+            const cur = groupSelect.value;
             const groups = Array.from(new Set(allChannels.map(c => c.group || '기타'))).sort();
-            groupSelect.innerHTML = '<option value="ALL">전체 그룹</option>';
+            
+            groupSelect.innerHTML = `
+                <option value="ALL">전체 그룹</option>
+                <option value="FAVORITES">⭐ 즐겨찾기 (${favorites.length})</option>
+            `;
+            
             groups.forEach(group => {
                 const option = document.createElement('option');
                 option.value = group;
                 option.textContent = group;
                 groupSelect.appendChild(option);
             });
+
+            if (cur && (groups.includes(cur) || cur === 'FAVORITES')) {
+                groupSelect.value = cur;
+            }
         }
 
         function applyFilter() {
@@ -331,12 +467,17 @@
             const searchQuery = searchInput.value.toLowerCase().trim();
 
             filteredChannels = allChannels.filter(c => {
-                const matchGroup = (selectedGroup === 'ALL') || (c.group === selectedGroup);
+                let matchGroup = true;
+                if (selectedGroup === 'FAVORITES') {
+                    matchGroup = favorites.includes(c.name);
+                } else if (selectedGroup !== 'ALL') {
+                    matchGroup = (c.group === selectedGroup);
+                }
                 const matchSearch = !searchQuery || (c.name && c.name.toLowerCase().includes(searchQuery));
                 return matchGroup && matchSearch;
             });
 
-            if (channelCountBadge) channelCountBadge.textContent = `채널 ${filteredChannels.length}개`;
+            channelCountBadge.textContent = `채널 ${filteredChannels.length}개`;
             renderChannelList();
         }
 
@@ -351,12 +492,27 @@
                     li.classList.add('active');
                 }
 
+                const favBtn = document.createElement('button');
+                const isFav = favorites.includes(channel.name);
+                favBtn.className = `channel-fav-btn ${isFav ? 'active' : ''}`;
+                favBtn.innerHTML = isFav ? '<i class="fa-solid fa-star"></i>' : '<i class="fa-regular fa-star"></i>';
+                favBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleFavorite(channel);
+                };
+                li.appendChild(favBtn);
+
+                const healthDot = document.createElement('span');
+                const state = channelHealth[channel.url] || 'none';
+                healthDot.className = `channel-health-dot ${state}`;
+                li.appendChild(healthDot);
+
                 if (channel.logo && channel.logo.startsWith('http')) {
                     const img = document.createElement('img');
                     img.className = 'channel-logo';
                     img.src = channel.logo;
                     img.alt = '';
-                    img.onerror = () => { img.remove(); };
+                    img.onerror = () => img.remove();
                     li.appendChild(img);
                 }
 
@@ -369,7 +525,7 @@
 
                 const groupDiv = document.createElement('div');
                 groupDiv.className = 'channel-group';
-                groupDiv.textContent = channel.group;
+                groupDiv.textContent = `${channel.group} • ${channel.source || '기본'}`;
 
                 details.appendChild(nameDiv);
                 details.appendChild(groupDiv);
@@ -404,13 +560,13 @@
         async function playChannel(channel) {
             currentChannel = channel;
             if (currentChannelName) currentChannelName.textContent = channel.name;
-            if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${channel.group}`;
+            if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${channel.group} (${channel.source || '기본'})`;
             if (videoOverlayMsg) videoOverlayMsg.style.display = 'none';
 
+            updateFavButtons();
             updateCurrentEpgDisplay(channel);
             renderChannelList();
 
-            // BookOasis getStreamProxyUrl API를 거쳐 스트림 URL 생성
             const targetStreamUrl = await resolveStreamUrl(channel.url);
 
             if (window.Hls && Hls.isSupported()) {
@@ -425,7 +581,7 @@
                 });
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (data.fatal && videoOverlayMsg) {
-                        videoOverlayMsg.textContent = '스트림 재생 오류: [설정 > 외부 도메인] 등록 상태를 확인하세요.';
+                        videoOverlayMsg.textContent = '스트림 재생 오류: 외부 도메인 등록 상태를 확인하세요.';
                         videoOverlayMsg.style.display = 'block';
                     }
                 });
@@ -450,7 +606,8 @@
             if (loadingSpinner) loadingSpinner.style.display = isLoading ? 'inline' : 'none';
         }
 
-        loadSavedDefaults();
+        loadFavorites();
+        refreshAllSources();
     }
 
     ensureHlsLoaded(initM3UPlayer);

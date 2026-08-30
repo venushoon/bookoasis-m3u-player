@@ -17,7 +17,7 @@ class M3UPlayerPlugin(BaseMetadataProvider):
 
     config_schema = []
 
-    # 원클릭 깃허브 자동 업데이트 선언
+    # 원클릭 깃허브 자동 업데이트 계약
     update_manifest = {
         "enabled": True,
         "provider": "github-raw",
@@ -40,7 +40,7 @@ class M3UPlayerPlugin(BaseMetadataProvider):
         return {"success": True, "items": []}
 
     def apply(self, db_type, book_id, item_data):
-        return False, "M3U 플레이어 전용 플러그인입니다."
+        return False, "ALIVE 플레이어 전용 플러그인입니다."
 
     def get_dashboard_data(self, db_type, limit=10):
         return {"success": True, "items": []}

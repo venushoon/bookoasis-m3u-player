@@ -1,52 +1,38 @@
 <div class="m3u-container">
     <!-- 좌측 사이드 패널 -->
     <aside class="m3u-sidebar">
+        <!-- 상단 헤더: 깔끔한 액션 버튼 툴바 -->
         <div class="m3u-sidebar-header">
-            <div class="m3u-input-group">
-                <input type="text" id="m3u-url-input" class="m3u-input" placeholder="M3U / M3U8 URL 입력..." autocomplete="off">
-                <button id="btn-load-m3u" class="m3u-btn m3u-btn-primary" title="재생목록 로드">
-                    <i class="fa-solid fa-rotate"></i> 로드
+            <div class="m3u-action-toolbar">
+                <button id="btn-open-sources" class="m3u-btn m3u-btn-primary" title="M3U 및 EPG 주소 관리">
+                    <i class="fa-solid fa-layer-group"></i> ⚙️ 소스 관리
                 </button>
-                <button id="btn-toggle-settings" class="m3u-btn m3u-btn-secondary" title="EPG 및 환경설정">
-                    <i class="fa-solid fa-gear"></i>
+                <button id="btn-check-health" class="m3u-btn m3u-btn-cyan" title="방송 스트림 가용성 점검">
+                    <i class="fa-solid fa-stethoscope"></i> 상태 점검
                 </button>
-            </div>
-
-            <!-- 환경설정 패널 (접기/펼치기) -->
-            <div id="m3u-settings-panel" class="m3u-settings-panel" style="display: none;">
-                <div class="m3u-setting-item">
-                    <label class="m3u-label">EPG (XMLTV) URL</label>
-                    <div class="m3u-input-group">
-                        <input type="text" id="epg-url-input" class="m3u-input" placeholder="http://.../epg.xml" autocomplete="off">
-                        <button id="btn-load-epg" class="m3u-btn m3u-btn-secondary">EPG 로드</button>
-                    </div>
-                </div>
-
-                <div class="m3u-setting-info">
-                    <small>※ 원활한 스트림 재생을 위해 [설정 ⚙️ > 외부 도메인]에 대상 도메인을 등록해 주세요.</small>
-                </div>
-
-                <div class="m3u-setting-item-row">
-                    <button id="btn-save-defaults" class="m3u-btn m3u-btn-accent" style="width: 100%; justify-content: center;">
-                        <i class="fa-solid fa-floppy-disk"></i> 현재 설정 기본값으로 저장
-                    </button>
-                </div>
+                <button id="btn-refresh-all" class="m3u-btn m3u-btn-secondary m3u-btn-icon" title="채널 및 EPG 새로고침">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
             </div>
 
             <!-- 채널 필터 및 검색창 -->
             <div class="m3u-filter-group">
                 <select id="m3u-group-select" class="m3u-select">
                     <option value="ALL">전체 그룹</option>
+                    <option value="FAVORITES">⭐ 즐겨찾기</option>
                 </select>
                 <input type="text" id="m3u-search-input" class="m3u-input" placeholder="채널 검색..." autocomplete="off">
             </div>
         </div>
 
-        <!-- 상태 표시줄 -->
+        <!-- 상태 정보 표시 바 -->
         <div class="m3u-channel-info-bar">
             <span id="channel-count-badge">채널 0개</span>
-            <span id="epg-status-badge" class="m3u-epg-badge">EPG 미등록</span>
-            <span id="loading-spinner" class="m3u-spinner" style="display: none;">로딩 중...</span>
+            <span id="epg-status-badge" class="m3u-badge">EPG 대기</span>
+            <span id="health-status-badge" class="m3u-badge" style="display: none;">점검 중...</span>
+            <span id="loading-spinner" class="m3u-spinner" style="display: none;">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+            </span>
         </div>
 
         <!-- 채널 리스트 뷰포트 -->
@@ -55,7 +41,7 @@
         </ul>
     </aside>
 
-    <!-- 우측 비디오 메인 뷰어 -->
+    <!-- 우측 비디오 메인 플레이어 -->
     <main class="m3u-main-player">
         <div class="m3u-player-wrapper">
             <video id="video-element" class="m3u-video" controls playsinline></video>
@@ -66,6 +52,9 @@
         <div class="m3u-current-channel-bar">
             <div class="current-channel-meta">
                 <div class="current-channel-top">
+                    <button id="btn-fav-current" class="m3u-btn-fav" title="현재 채널 즐겨찾기">
+                        <i class="fa-regular fa-star"></i>
+                    </button>
                     <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
                     <span id="current-channel-group" class="current-group">그룹: -</span>
                 </div>
@@ -80,4 +69,65 @@
             </div>
         </div>
     </main>
+
+    <!-- 소스 관리 설정 모달 -->
+    <div id="m3u-modal-overlay" class="m3u-modal-overlay" style="display: none;">
+        <div class="m3u-modal-content">
+            <div class="m3u-modal-header">
+                <h3><i class="fa-solid fa-sliders"></i> ALIVE 플레이어 소스 관리</h3>
+                <button id="btn-close-modal" class="m3u-modal-close">&times;</button>
+            </div>
+            
+            <div class="m3u-modal-body">
+                <!-- 1. 플레이리스트 관리 -->
+                <div class="m3u-modal-section">
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-list-ul"></i> 플레이리스트 관리 (M3U)</h4>
+                    <div class="m3u-form-group">
+                        <label>주소 입력창 1 (기본)</label>
+                        <input type="text" id="cfg-m3u-url1" class="m3u-input" placeholder="https://.../playlist1.m3u">
+                    </div>
+                    <div class="m3u-form-group">
+                        <label>주소 입력창 2 (보조/추가)</label>
+                        <input type="text" id="cfg-m3u-url2" class="m3u-input" placeholder="https://.../playlist2.m3u">
+                    </div>
+                </div>
+
+                <!-- 2. EPG 설정 -->
+                <div class="m3u-modal-section">
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-calendar-days"></i> EPG 설정 (우선순위 순)</h4>
+                    <div class="m3u-form-group">
+                        <label>EPG 주소 1 (최우선)</label>
+                        <input type="text" id="cfg-epg-url1" class="m3u-input" placeholder="http://.../epg_primary.xml">
+                    </div>
+                    <div class="m3u-form-group">
+                        <label>EPG 주소 2 (차순위/백업)</label>
+                        <input type="text" id="cfg-epg-url2" class="m3u-input" placeholder="http://.../epg_secondary.xml">
+                    </div>
+                </div>
+
+                <!-- 3. EPG 자동 갱신 주기 -->
+                <div class="m3u-modal-section">
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-clock-rotate-left"></i> EPG 주소 갱신</h4>
+                    <div class="m3u-form-group">
+                        <label>자동 갱신 주기</label>
+                        <select id="cfg-epg-interval" class="m3u-select">
+                            <option value="30">30분마다 자동 갱신</option>
+                            <option value="60" selected>1시간마다 자동 갱신</option>
+                            <option value="720">12시간마다 자동 갱신</option>
+                            <option value="1440">24시간마다 자동 갱신</option>
+                            <option value="0">자동 갱신 안 함 (수동)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="m3u-modal-footer">
+                <span class="m3u-modal-tip">※ 외부 도메인은 BookOasis [설정 ⚙️ > 외부 도메인]에 사전 등록되어야 합니다.</span>
+                <div class="m3u-modal-btns">
+                    <button id="btn-modal-cancel" class="m3u-btn m3u-btn-secondary">취소</button>
+                    <button id="btn-modal-save" class="m3u-btn m3u-btn-accent">저장 및 적용</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
