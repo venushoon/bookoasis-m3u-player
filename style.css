@@ -10,8 +10,8 @@
 
 /* 좌측 사이드 패널 */
 .m3u-sidebar {
-    width: 360px;
-    min-width: 300px;
+    width: 380px;
+    min-width: 320px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -56,10 +56,11 @@
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
 }
 
 .m3u-btn-primary {
@@ -81,13 +82,83 @@
     background: var(--app-bg-card-hover);
 }
 
+.m3u-btn-accent {
+    background: #10b981;
+    color: #ffffff;
+}
+
+.m3u-btn-accent:hover {
+    background: #059669;
+}
+
+/* 설정 패널 */
+.m3u-settings-panel {
+    background: var(--app-bg-card);
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.m3u-setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.m3u-setting-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 4px;
+}
+
+.m3u-label {
+    font-size: 0.75rem;
+    color: var(--app-text-muted);
+    font-weight: 600;
+}
+
+.m3u-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--app-text-muted);
+    cursor: pointer;
+}
+
+.m3u-checkbox-label input {
+    cursor: pointer;
+    accent-color: var(--app-accent);
+}
+
+/* 채널 정보 및 EPG 상태바 */
 .m3u-channel-info-bar {
     padding: 8px 12px;
     font-size: 0.8rem;
     color: var(--app-text-muted);
     display: flex;
+    align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--app-border-light);
+}
+
+.m3u-epg-badge {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--app-bg-card);
+    border: 1px solid var(--app-border);
+}
+
+.m3u-epg-badge.active {
+    background: var(--app-accent);
+    color: #ffffff;
+    border-color: var(--app-accent);
 }
 
 .m3u-spinner {
@@ -127,13 +198,14 @@
     color: #ffffff;
 }
 
-.m3u-channel-item.active .channel-group {
-    color: rgba(255, 255, 255, 0.8);
+.m3u-channel-item.active .channel-group,
+.m3u-channel-item.active .channel-epg-now {
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .channel-logo {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 4px;
     object-fit: contain;
     background: rgba(0, 0, 0, 0.1);
@@ -155,13 +227,22 @@
 .channel-group {
     font-size: 0.75rem;
     color: var(--app-text-muted);
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.channel-epg-now {
+    font-size: 0.72rem;
+    color: var(--app-accent);
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* 우측 플레이어 */
+/* 우측 비디오 플레이어 */
 .m3u-main-player {
     flex: 1;
     display: flex;
@@ -191,21 +272,27 @@
     position: absolute;
     color: #ffffff;
     font-size: 1rem;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.75);
     padding: 12px 20px;
     border-radius: 8px;
     pointer-events: none;
 }
 
 .m3u-current-channel-bar {
-    height: 64px;
+    min-height: 68px;
     background: var(--app-bg-card);
     border-top: 1px solid var(--app-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 10px 16px;
     box-sizing: border-box;
+}
+
+.current-channel-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .current-title {
@@ -215,27 +302,12 @@
 }
 
 .current-group {
-    margin: 2px 0 0 0;
     font-size: 0.8rem;
     color: var(--app-text-muted);
 }
 
-.m3u-options-group {
-    display: flex;
-    align-items: center;
-    padding-top: 4px;
-}
-
-.m3u-checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    color: var(--app-text-muted);
-    cursor: pointer;
-}
-
-.m3u-checkbox-label input {
-    cursor: pointer;
-    accent-color: var(--app-accent);
+.current-epg-info {
+    margin-top: 4px;
+    font-size: 0.82rem;
+    color: var(--app-text-secondary);
 }

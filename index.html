@@ -1,48 +1,83 @@
 <div class="m3u-container">
     <!-- 좌측 사이드 패널 -->
     <aside class="m3u-sidebar">
+        <!-- 상단 헤더 & 컨트롤 바 -->
         <div class="m3u-sidebar-header">
             <div class="m3u-input-group">
                 <input type="text" id="m3u-url-input" class="m3u-input" placeholder="M3U / M3U8 URL 입력..." autocomplete="off">
                 <button id="btn-load-m3u" class="m3u-btn m3u-btn-primary" title="재생목록 로드">
                     <i class="fa-solid fa-rotate"></i> 로드
                 </button>
+                <button id="btn-toggle-settings" class="m3u-btn m3u-btn-secondary" title="상세 설정">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
             </div>
+
+            <!-- 상세 설정 패널 (접기/펼치기) -->
+            <div id="m3u-settings-panel" class="m3u-settings-panel" style="display: none;">
+                <div class="m3u-setting-item">
+                    <label class="m3u-label">EPG (XMLTV) URL</label>
+                    <div class="m3u-input-group">
+                        <input type="text" id="epg-url-input" class="m3u-input" placeholder="http://.../epg.xml" autocomplete="off">
+                        <button id="btn-load-epg" class="m3u-btn m3u-btn-secondary">EPG 로드</button>
+                    </div>
+                </div>
+
+                <div class="m3u-setting-item">
+                    <label class="m3u-label">CORS 프록시 주소</label>
+                    <input type="text" id="cors-proxy-input" class="m3u-input" placeholder="https://api.allorigins.win/raw?url=" autocomplete="off">
+                </div>
+
+                <div class="m3u-setting-item-row">
+                    <label class="m3u-checkbox-label">
+                        <input type="checkbox" id="m3u-cors-proxy" checked>
+                        <span>CORS 프록시 경유</span>
+                    </label>
+                    <button id="btn-save-defaults" class="m3u-btn m3u-btn-accent" title="현재 설정을 기본값으로 브라우저에 저장">
+                        <i class="fa-solid fa-floppy-disk"></i> 기본값 저장
+                    </button>
+                </div>
+            </div>
+
+            <!-- 채널 필터 및 검색창 -->
             <div class="m3u-filter-group">
                 <select id="m3u-group-select" class="m3u-select">
                     <option value="ALL">전체 그룹</option>
                 </select>
                 <input type="text" id="m3u-search-input" class="m3u-input" placeholder="채널 검색..." autocomplete="off">
             </div>
-            <div class="m3u-options-group">
-                <label class="m3u-checkbox-label">
-                    <input type="checkbox" id="m3u-cors-proxy" checked>
-                    <span>CORS 우회 프록시 사용</span>
-                </label>
-            </div>
         </div>
 
+        <!-- 상태 표시줄 -->
         <div class="m3u-channel-info-bar">
             <span id="channel-count-badge">채널 0개</span>
+            <span id="epg-status-badge" class="m3u-epg-badge">EPG 미등록</span>
             <span id="loading-spinner" class="m3u-spinner" style="display: none;">로딩 중...</span>
         </div>
 
+        <!-- 채널 리스트 뷰포트 -->
         <ul id="m3u-channel-list" class="m3u-channel-list">
-            <!-- 채널 목록 동적 렌더링 -->
+            <!-- 채널 목록 동적 생성 -->
         </ul>
     </aside>
 
-    <!-- 우측 메인 영역 -->
+    <!-- 우측 비디오 메인 뷰어 -->
     <main class="m3u-main-player">
         <div class="m3u-player-wrapper">
             <video id="video-element" class="m3u-video" controls playsinline></video>
             <div id="video-overlay-msg" class="m3u-overlay-msg">재생할 채널을 선택해 주세요.</div>
         </div>
 
+        <!-- 하단 채널 메타데이터 & EPG 방영 정보 바 -->
         <div class="m3u-current-channel-bar">
             <div class="current-channel-meta">
-                <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
-                <p id="current-channel-group" class="current-group">그룹: -</p>
+                <div class="current-channel-top">
+                    <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
+                    <span id="current-channel-group" class="current-group">그룹: -</span>
+                </div>
+                <div id="current-epg-info" class="current-epg-info">
+                    <span class="epg-title">편성 정보 없음</span>
+                </div>
             </div>
             <div class="current-channel-actions">
                 <button id="btn-reload-stream" class="m3u-btn m3u-btn-secondary" title="스트림 재연결">
