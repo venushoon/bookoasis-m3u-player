@@ -28,8 +28,7 @@
     function initM3UPlayer() {
         const container = document.querySelector('.m3u-container');
         const sidebar = document.querySelector('.m3u-sidebar');
-        const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
-        const btnExpandSidebar = document.getElementById('btn-expand-sidebar');
+        const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
 
         const btnOpenSources = document.getElementById('btn-open-sources');
         const btnCheckHealth = document.getElementById('btn-check-health');
@@ -64,7 +63,7 @@
         const currentEpgInfo = document.getElementById('current-epg-info');
         const btnReloadStream = document.getElementById('btn-reload-stream');
 
-        if (!btnOpenSources || !videoElement || !container || !sidebar) return;
+        if (!btnOpenSources || !videoElement || !container || !sidebar || !btnSidebarToggle) return;
 
         let allChannels = window.__ALIVE_CACHE__.channels || [];
         let filteredChannels = [];
@@ -78,29 +77,30 @@
         let heartbeatTimer = null;
         let lastVisibleState = true;
 
-        // 사이드바 접기/펼치기 제어
+        // 경계선 슬라이드 탭 핸들 제어
         function setSidebarCollapsed(collapsed) {
             if (collapsed) {
                 sidebar.classList.add('collapsed');
-                if (btnExpandSidebar) btnExpandSidebar.style.display = 'inline-flex';
+                container.classList.add('sidebar-collapsed');
+                btnSidebarToggle.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+                btnSidebarToggle.title = '채널 목록 펼치기';
                 localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'true');
             } else {
                 sidebar.classList.remove('collapsed');
-                if (btnExpandSidebar) btnExpandSidebar.style.display = 'none';
+                container.classList.remove('sidebar-collapsed');
+                btnSidebarToggle.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+                btnSidebarToggle.title = '채널 목록 접기';
                 localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'false');
             }
         }
 
-        // 초기 사이드바 상태 복원
         const initialCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
         setSidebarCollapsed(initialCollapsed);
 
-        if (btnToggleSidebar) {
-            btnToggleSidebar.onclick = () => setSidebarCollapsed(true);
-        }
-        if (btnExpandSidebar) {
-            btnExpandSidebar.onclick = () => setSidebarCollapsed(false);
-        }
+        btnSidebarToggle.onclick = () => {
+            const isCurrentlyCollapsed = sidebar.classList.contains('collapsed');
+            setSidebarCollapsed(!isCurrentlyCollapsed);
+        };
 
         function isAutoResumeEnabled() {
             return localStorage.getItem('bookoasis_m3u_autoresume') === 'true';

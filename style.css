@@ -19,8 +19,10 @@
     background: var(--app-bg-sidebar);
     border-right: 1px solid var(--app-border);
     box-sizing: border-box;
-    transition: width 0.25s ease, margin-left 0.25s ease, opacity 0.2s ease;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
     flex-shrink: 0;
+    position: relative;
+    z-index: 10;
 }
 
 /* 사이드 패널 숨김(접힘) 스타일 */
@@ -31,6 +33,49 @@
     opacity: 0;
     pointer-events: none;
     border-right: none;
+}
+
+/* 경계선 중앙 슬라이드 토글 탭 핸들 */
+.m3u-sidebar-toggle-handle {
+    position: absolute;
+    top: 50%;
+    left: 390px;
+    transform: translateY(-50%);
+    z-index: 100;
+    width: 22px;
+    height: 60px;
+    background: var(--app-bg-card);
+    border: 1px solid var(--app-border);
+    border-left: none;
+    border-radius: 0 10px 10px 0;
+    color: var(--app-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.3);
+    transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s ease, color 0.2s ease, width 0.15s ease;
+    outline: none;
+    padding: 0;
+}
+
+.m3u-sidebar-toggle-handle:hover {
+    background: var(--app-accent);
+    color: #ffffff;
+    width: 26px;
+    border-color: var(--app-accent);
+}
+
+.m3u-sidebar-toggle-handle i {
+    font-size: 0.85rem;
+    transition: transform 0.2s ease;
+}
+
+/* 사이드바 접힘 시 토글 핸들 위치 */
+.m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle {
+    left: 0;
+    border-left: 1px solid var(--app-border);
+    border-radius: 0 10px 10px 0;
 }
 
 .m3u-sidebar-header {
@@ -127,8 +172,8 @@
 }
 
 .m3u-btn-icon {
-    padding: 8px 10px;
-    min-width: 36px;
+    padding: 8px 12px;
+    min-width: 38px;
 }
 
 .m3u-btn-accent {
@@ -138,34 +183,6 @@
 
 .m3u-btn-accent:hover {
     background: #059669;
-}
-
-/* 플로팅 사이드바 열기 버튼 */
-.m3u-btn-floating-toggle {
-    position: absolute;
-    top: 14px;
-    left: 14px;
-    z-index: 50;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(15, 23, 42, 0.75);
-    backdrop-filter: blur(8px);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 0.88rem;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-    transition: all 0.2s ease;
-}
-
-.m3u-btn-floating-toggle:hover {
-    background: rgba(168, 85, 247, 0.9);
-    border-color: #a855f7;
-    transform: translateY(-1px);
 }
 
 /* 상태 정보 바 */
