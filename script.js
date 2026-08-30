@@ -11,6 +11,7 @@
     }
 
     function initM3UPlayer() {
+        const container = document.querySelector('.m3u-container');
         const btnOpenSources = document.getElementById('btn-open-sources');
         const btnCheckHealth = document.getElementById('btn-check-health');
         const btnRefreshAll = document.getElementById('btn-refresh-all');
@@ -42,7 +43,7 @@
         const currentEpgInfo = document.getElementById('current-epg-info');
         const btnReloadStream = document.getElementById('btn-reload-stream');
 
-        if (!btnOpenSources || !videoElement) return;
+        if (!btnOpenSources || !videoElement || !container) return;
 
         let allChannels = [];
         let filteredChannels = [];
@@ -53,6 +54,46 @@
         let currentChannel = null;
         let hls = null;
         let epgTimer = null;
+        let isDestroyed = false;
+
+        // 화면 이탈/언마운트 시 즉각 완전 정지 루틴
+        function cleanupPlayer() {
+            if (isDestroyed) return;
+            isDestroyed = true;
+
+            if (epgTimer) {
+                clearInterval(epgTimer);
+                epgTimer = null;
+            }
+
+            if (hls) {
+                hls.stopLoad();
+                hls.detachMedia();
+                hls.destroy();
+                hls = null;
+            }
+
+            if (videoElement) {
+                videoElement.pause();
+                videoElement.removeAttribute('src');
+                videoElement.load();
+            }
+
+            if (observer) {
+                observer.disconnect();
+            }
+        }
+
+        // SPA 화면 전환 감지용 MutationObserver
+        const observer = new MutationObserver(() => {
+            if (!document.body.contains(container)) {
+                cleanupPlayer();
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // 브라우저 탭 닫기/이동 시 이벤트 핸들러
+        window.addEventListener('beforeunload', cleanupPlayer);
 
         async function resolveProxyUrl(url) {
             if (!url) return null;
@@ -218,7 +259,6 @@
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
                     let rawLogo = logoMatch ? logoMatch[1] : '';
                     
-                    // Mixed Content 경고 방어: http:// 로고 URL을 https:// 로 자동 승격
                     if (rawLogo && rawLogo !== 'None') {
                         if (rawLogo.startsWith('http://')) {
                             rawLogo = rawLogo.replace(/^http:\/\//i, 'https://');
@@ -602,11 +642,13 @@
                 hls.attachMedia(videoElement);
 
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    videoElement.play().catch(() => {});
+                    if (!isDestroyed) {
+                        videoElement.play().catch(() => {});
+                    }
                 });
 
                 hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal) {
+                    if (data.fatal && !isDestroyed) {
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
@@ -630,13 +672,15 @@
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
                 videoElement.src = targetStreamUrl;
                 videoElement.addEventListener('loadedmetadata', () => {
-                    videoElement.play().catch(() => {});
+                    if (!isDestroyed) {
+                        videoElement.play().catch(() => {});
+                    }
                 });
             }
         }
 
         videoElement.addEventListener('waiting', () => {
-            if (hls && !videoElement.paused) {
+            if (hls && !videoElement.paused && !isDestroyed) {
                 hls.startLoad();
             }
         });
