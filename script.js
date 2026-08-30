@@ -54,22 +54,32 @@
         let currentChannel = null;
         let hls = null;
         let epgTimer = null;
-        let isDestroyed = false;
+        let heartbeatTimer = null;
 
-        // 화면 이탈/언마운트 시 즉각 완전 정지 루틴
-        function cleanupPlayer() {
-            if (isDestroyed) return;
-            isDestroyed = true;
-
-            if (epgTimer) {
-                clearInterval(epgTimer);
-                epgTimer = null;
+        // 실제 화면 노출 여부 검사 (부모의 display: none 까지 추적)
+        function isElementVisible(el) {
+            if (!el || !document.body.contains(el)) return false;
+            if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
+            
+            let curr = el;
+            while (curr && curr !== document.body) {
+                const style = window.getComputedStyle(curr);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                    return false;
+                }
+                curr = curr.parentElement;
             }
+            return true;
+        }
 
+        // 스트림 및 오디오 완전 정지 루틴
+        function stopPlayback() {
             if (hls) {
-                hls.stopLoad();
-                hls.detachMedia();
-                hls.destroy();
+                try {
+                    hls.stopLoad();
+                    hls.detachMedia();
+                    hls.destroy();
+                } catch (e) {}
                 hls = null;
             }
 
@@ -78,22 +88,45 @@
                 videoElement.removeAttribute('src');
                 videoElement.load();
             }
+        }
 
-            if (observer) {
-                observer.disconnect();
+        // 전체 정리 루틴 (메뉴 이탈/창 닫기)
+        function cleanupAll() {
+            stopPlayback();
+
+            if (epgTimer) {
+                clearInterval(epgTimer);
+                epgTimer = null;
+            }
+            if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
             }
         }
 
-        // SPA 화면 전환 감지용 MutationObserver
-        const observer = new MutationObserver(() => {
-            if (!document.body.contains(container)) {
-                cleanupPlayer();
+        // 200ms 주기로 가시성 감시하여 다른 탭/메뉴 전환 시 오디오 즉각 차단
+        heartbeatTimer = setInterval(() => {
+            if (!isElementVisible(container)) {
+                if (hls || (videoElement && !videoElement.paused)) {
+                    stopPlayback();
+                }
+            }
+        }, 200);
+
+        // 사이드바 클릭, 뒤로가기, 탭 전환 시 강제 정지 이벤트 등록
+        window.addEventListener('popstate', stopPlayback);
+        window.addEventListener('hashchange', stopPlayback);
+        window.addEventListener('beforeunload', cleanupAll);
+        document.addEventListener('click', (e) => {
+            const navTarget = e.target.closest('a, button, [data-category], [data-tab], .sidebar-item, .nav-link');
+            if (navTarget && !container.contains(navTarget)) {
+                setTimeout(() => {
+                    if (!isElementVisible(container)) {
+                        stopPlayback();
+                    }
+                }, 50);
             }
         });
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        // 브라우저 탭 닫기/이동 시 이벤트 핸들러
-        window.addEventListener('beforeunload', cleanupPlayer);
 
         async function resolveProxyUrl(url) {
             if (!url) return null;
@@ -257,13 +290,11 @@
                     currentItem.group = groupMatch ? groupMatch[1] : '기타';
 
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
-                    let rawLogo = logoMatch ? logoMatch[1] : '';
+                    let rawLogo = (logoMatch ? logoMatch[1] : '').trim();
                     
-                    if (rawLogo && rawLogo !== 'None') {
-                        if (rawLogo.startsWith('http://')) {
-                            rawLogo = rawLogo.replace(/^http:\/\//i, 'https://');
-                        }
-                        currentItem.logo = rawLogo.startsWith('https://') ? rawLogo : '';
+                    // None 문자열 및 비정상 URL 완전 방어
+                    if (rawLogo && rawLogo.toLowerCase() !== 'none' && (rawLogo.startsWith('http://') || rawLogo.startsWith('https://'))) {
+                        currentItem.logo = rawLogo.replace(/^http:\/\//i, 'https://');
                     } else {
                         currentItem.logo = '';
                     }
@@ -555,7 +586,7 @@
                 healthDot.className = `channel-health-dot ${state}`;
                 li.appendChild(healthDot);
 
-                if (channel.logo && channel.logo.startsWith('http')) {
+                if (channel.logo && channel.logo.startsWith('https://')) {
                     const img = document.createElement('img');
                     img.className = 'channel-logo';
                     img.src = channel.logo;
@@ -606,6 +637,8 @@
         }
 
         async function playChannel(channel) {
+            if (!isElementVisible(container)) return;
+
             currentChannel = channel;
             if (currentChannelName) currentChannelName.textContent = channel.name;
             if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${channel.group} (${channel.source || '기본'})`;
@@ -618,9 +651,7 @@
             const targetStreamUrl = await resolveStreamUrl(channel.url);
 
             if (window.Hls && Hls.isSupported()) {
-                if (hls) {
-                    hls.destroy();
-                }
+                stopPlayback();
 
                 hls = new Hls({
                     enableWorker: true,
@@ -642,13 +673,15 @@
                 hls.attachMedia(videoElement);
 
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    if (!isDestroyed) {
+                    if (isElementVisible(container)) {
                         videoElement.play().catch(() => {});
+                    } else {
+                        stopPlayback();
                     }
                 });
 
                 hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal && !isDestroyed) {
+                    if (data.fatal && isElementVisible(container)) {
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
@@ -659,8 +692,8 @@
                                 hls.recoverMediaError();
                                 break;
                             default:
-                                console.error('[ALIVE] 복구 불가능한 스트림 오류:', data);
-                                hls.destroy();
+                                console.error('[ALIVE] 스트림 오류:', data);
+                                stopPlayback();
                                 if (videoOverlayMsg) {
                                     videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. 재연결을 시도하세요.';
                                     videoOverlayMsg.style.display = 'block';
@@ -672,15 +705,17 @@
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
                 videoElement.src = targetStreamUrl;
                 videoElement.addEventListener('loadedmetadata', () => {
-                    if (!isDestroyed) {
+                    if (isElementVisible(container)) {
                         videoElement.play().catch(() => {});
+                    } else {
+                        stopPlayback();
                     }
                 });
             }
         }
 
         videoElement.addEventListener('waiting', () => {
-            if (hls && !videoElement.paused && !isDestroyed) {
+            if (hls && !videoElement.paused && isElementVisible(container)) {
                 hls.startLoad();
             }
         });
