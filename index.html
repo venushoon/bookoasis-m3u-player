@@ -1,5 +1,5 @@
 <div class="m3u-container">
-    <!-- 좌측 사이드 패널: M3U 주소 입력 및 채널 목록 -->
+    <!-- 좌측 사이드 패널 -->
     <aside class="m3u-sidebar">
         <div class="m3u-sidebar-header">
             <div class="m3u-input-group">
@@ -14,6 +14,12 @@
                 </select>
                 <input type="text" id="m3u-search-input" class="m3u-input" placeholder="채널 검색..." autocomplete="off">
             </div>
+            <div class="m3u-options-group">
+                <label class="m3u-checkbox-label">
+                    <input type="checkbox" id="m3u-cors-proxy" checked>
+                    <span>CORS 우회 프록시 사용</span>
+                </label>
+            </div>
         </div>
 
         <div class="m3u-channel-info-bar">
@@ -26,7 +32,7 @@
         </ul>
     </aside>
 
-    <!-- 우측 메인 영역: HLS 비디오 플레이어 화면 -->
+    <!-- 우측 메인 영역 -->
     <main class="m3u-main-player">
         <div class="m3u-player-wrapper">
             <video id="video-element" class="m3u-video" controls playsinline></video>

@@ -1,5 +1,6 @@
 (function () {
-    // HLS.js 라이브러리 동적 로드 헬퍼
+    const CORS_PROXY = 'https://corsproxy.io/?';
+
     function ensureHlsLoaded(callback) {
         if (window.Hls) {
             callback();
@@ -16,6 +17,7 @@
         const btnLoadM3u = document.getElementById('btn-load-m3u');
         const groupSelect = document.getElementById('m3u-group-select');
         const searchInput = document.getElementById('m3u-search-input');
+        const corsProxyCheck = document.getElementById('m3u-cors-proxy');
         const channelList = document.getElementById('m3u-channel-list');
         const channelCountBadge = document.getElementById('channel-count-badge');
         const loadingSpinner = document.getElementById('loading-spinner');
@@ -33,14 +35,20 @@
         let currentChannel = null;
         let hls = null;
 
-        // 로컬 스토리지에 저장된 마지막 M3U 주소 불러오기 및 자동 로드
+        // 프록시 URL 변환 헬퍼
+        function wrapProxy(url) {
+            if (corsProxyCheck && corsProxyCheck.checked) {
+                return CORS_PROXY + encodeURIComponent(url);
+            }
+            return url;
+        }
+
         const savedUrl = localStorage.getItem('bookoasis_m3u_last_url') || '';
         if (savedUrl) {
             m3uUrlInput.value = savedUrl;
             loadM3U(savedUrl);
         }
 
-        // 로드 버튼 클릭 이벤트
         btnLoadM3u.onclick = () => {
             const url = m3uUrlInput.value.trim();
             if (url) {
@@ -49,14 +57,11 @@
             }
         };
 
-        // 엔터키 입력 시 자동 로드
         m3uUrlInput.onkeydown = (e) => {
-            if (e.key === 'Enter') {
-                btnLoadM3u.click();
-            }
+            if (e.key === 'Enter') btnLoadM3u.click();
         };
 
-        async function loadM3U(url) {
+        async function loadM3U(rawUrl) {
             showLoading(true);
             if (videoOverlayMsg) {
                 videoOverlayMsg.textContent = 'M3U 목록을 불러오는 중입니다...';
@@ -64,32 +69,25 @@
             }
 
             try {
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status} (${response.statusText})`);
-                }
+                const targetUrl = wrapProxy(rawUrl);
+                const response = await fetch(targetUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status} (${response.statusText})`);
                 const textData = await response.text();
                 allChannels = parseM3U(textData);
 
-                if (allChannels.length === 0) {
-                    throw new Error('유효한 채널 목록을 찾을 수 없습니다.');
-                }
+                if (allChannels.length === 0) throw new Error('유효한 채널 목록이 없습니다.');
 
                 updateGroupSelect();
                 applyFilter();
 
-                if (videoOverlayMsg) {
-                    videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
-                }
+                if (videoOverlayMsg) videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
             } catch (error) {
                 console.error('[M3U Player] 로드 실패:', error);
                 if (videoOverlayMsg) {
-                    videoOverlayMsg.textContent = 'M3U 로드 실패: URL 유효성 및 CORS 정책을 확인하세요.';
+                    videoOverlayMsg.textContent = 'M3U 로드 실패: CORS 프록시 체크 상태 또는 URL을 확인하세요.';
                     videoOverlayMsg.style.display = 'block';
                 }
-                if (channelCountBadge) {
-                    channelCountBadge.textContent = '로드 실패';
-                }
+                if (channelCountBadge) channelCountBadge.textContent = '로드 실패';
             } finally {
                 showLoading(false);
             }
@@ -146,9 +144,7 @@
                 return matchGroup && matchSearch;
             });
 
-            if (channelCountBadge) {
-                channelCountBadge.textContent = `채널 ${filteredChannels.length}개`;
-            }
+            if (channelCountBadge) channelCountBadge.textContent = `채널 ${filteredChannels.length}개`;
             renderChannelList();
         }
 
@@ -201,22 +197,42 @@
             renderChannelList();
 
             const streamUrl = channel.url;
+            const useProxy = corsProxyCheck && corsProxyCheck.checked;
+
             if (window.Hls && Hls.isSupported()) {
                 if (hls) hls.destroy();
-                hls = new Hls({ enableWorker: true });
-                hls.loadSource(streamUrl);
+
+                const hlsConfig = {
+                    enableWorker: true,
+                };
+
+                // CORS 프록시 모드일 때 세그먼트 요청 주소 자동 래핑
+                if (useProxy) {
+                    hlsConfig.xhrSetup = function (xhr, url) {
+                        // 상대경로가 아닌 전체 URL 요청일 때 프록시 래핑
+                        if (!url.startsWith(CORS_PROXY) && url.startsWith('http')) {
+                            const proxiedUrl = CORS_PROXY + encodeURIComponent(url);
+                            xhr.open('GET', proxiedUrl, true);
+                        }
+                    };
+                }
+
+                hls = new Hls(hlsConfig);
+                const targetStreamUrl = useProxy ? wrapProxy(streamUrl) : streamUrl;
+                hls.loadSource(targetStreamUrl);
                 hls.attachMedia(videoElement);
+
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     videoElement.play().catch(() => {});
                 });
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (data.fatal && videoOverlayMsg) {
-                        videoOverlayMsg.textContent = '스트림 재생 오류가 발생했습니다.';
+                        videoOverlayMsg.textContent = '스트림 재생 오류: CORS 정책 또는 비활성 링크입니다.';
                         videoOverlayMsg.style.display = 'block';
                     }
                 });
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                videoElement.src = streamUrl;
+                videoElement.src = useProxy ? wrapProxy(streamUrl) : streamUrl;
                 videoElement.addEventListener('loadedmetadata', () => {
                     videoElement.play().catch(() => {});
                 });

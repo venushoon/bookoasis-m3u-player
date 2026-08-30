@@ -219,3 +219,23 @@
     font-size: 0.8rem;
     color: var(--app-text-muted);
 }
+
+.m3u-options-group {
+    display: flex;
+    align-items: center;
+    padding-top: 4px;
+}
+
+.m3u-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--app-text-muted);
+    cursor: pointer;
+}
+
+.m3u-checkbox-label input {
+    cursor: pointer;
+    accent-color: var(--app-accent);
+}
