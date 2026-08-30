@@ -27,7 +27,7 @@
 
     function initM3UPlayer() {
         const container = document.querySelector('.m3u-container');
-        const sidebar = document.querySelector('.m3u-sidebar');
+        const sidebar = document.getElementById('m3u-sidebar');
         const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
 
         const btnOpenSources = document.getElementById('btn-open-sources');
@@ -77,32 +77,34 @@
         let heartbeatTimer = null;
         let lastVisibleState = true;
 
-        // 경계선 슬라이드 탭 핸들 상태 제어
-        function setSidebarCollapsed(collapsed) {
-            if (collapsed) {
-                sidebar.classList.add('collapsed');
+        // 사이드바 상태를 관리하는 단일 불리언 플래그
+        let isSidebarCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
+
+        function updateSidebarUI() {
+            if (isSidebarCollapsed) {
                 container.classList.add('sidebar-collapsed');
-                btnSidebarToggle.title = '채널 목록 펼치기';
-                localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'true');
+                btnSidebarToggle.setAttribute('title', '채널 목록 펼치기');
             } else {
-                sidebar.classList.remove('collapsed');
                 container.classList.remove('sidebar-collapsed');
-                btnSidebarToggle.title = '채널 목록 접기';
-                localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'false');
+                btnSidebarToggle.setAttribute('title', '채널 목록 접기');
             }
+            localStorage.setItem('bookoasis_m3u_sidebar_collapsed', isSidebarCollapsed ? 'true' : 'false');
         }
 
-        // 초기 저장된 사이드바 상태 복원
-        const initialCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
-        setSidebarCollapsed(initialCollapsed);
+        // 초기 저장 상태 적용
+        updateSidebarUI();
 
-        // 클릭 이벤트 핸들러 단독 바인딩
-        btnSidebarToggle.onclick = function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            const isCurrentlyCollapsed = container.classList.contains('sidebar-collapsed') || sidebar.classList.contains('collapsed');
-            setSidebarCollapsed(!isCurrentlyCollapsed);
-        };
+        // 토글 핸들 클릭 및 터치 단독 이벤트
+        function handleToggleClick(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            isSidebarCollapsed = !isSidebarCollapsed;
+            updateSidebarUI();
+        }
+
+        btnSidebarToggle.onclick = handleToggleClick;
 
         function isAutoResumeEnabled() {
             return localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
@@ -181,6 +183,8 @@
         window.__ALIVE_CLEANUP__ = cleanupAll;
 
         function onTabRestored() {
+            updateSidebarUI();
+
             if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
                 refreshAllSources(false);
             } else {
@@ -449,6 +453,7 @@
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
                     let rawLogo = (logoMatch ? logoMatch[1] : '').trim();
                     
+                    // None 문자열 및 잘못된 로고 URL 필터링
                     if (rawLogo && rawLogo.toLowerCase() !== 'none' && (rawLogo.startsWith('http://') || rawLogo.startsWith('https://'))) {
                         currentItem.logo = rawLogo.replace(/^http:\/\//i, 'https://');
                     } else {

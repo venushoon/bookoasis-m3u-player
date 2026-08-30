@@ -9,31 +9,33 @@
     position: relative;
 }
 
-/* 좌측 사이드 패널 */
+/* 좌측 사이드 패널 기본 (열린 상태) */
 .m3u-sidebar {
     width: 390px;
-    min-width: 330px;
+    min-width: 390px;
+    max-width: 390px;
     height: 100%;
     display: flex;
     flex-direction: column;
     background: var(--app-bg-sidebar);
     border-right: 1px solid var(--app-border);
     box-sizing: border-box;
-    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     flex-shrink: 0;
     position: relative;
     z-index: 10;
+    overflow: hidden;
 }
 
-/* 사이드 패널 숨김(접힘) 스타일 */
-.m3u-sidebar.collapsed {
+/* 컨테이너 기준 사이드바 접힘 상태 스타일 */
+.m3u-container.sidebar-collapsed .m3u-sidebar {
     width: 0 !important;
     min-width: 0 !important;
+    max-width: 0 !important;
     margin-left: -390px !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
     border-right: none !important;
-    overflow: hidden !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 /* 경계선 중앙 슬라이드 토글 탭 핸들 */
@@ -42,22 +44,24 @@
     top: 50%;
     left: 390px;
     transform: translateY(-50%);
-    z-index: 999;
+    z-index: 1000;
     width: 24px;
-    height: 64px;
+    height: 68px;
     background: #a855f7;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.25);
     border-left: none;
-    border-radius: 0 10px 10px 0;
+    border-radius: 0 12px 12px 0;
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.35);
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.4);
     transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s ease, width 0.15s ease;
     outline: none;
     padding: 0;
+    user-select: none;
+    touch-action: manipulation;
 }
 
 .m3u-sidebar-toggle-handle:hover {
@@ -65,10 +69,14 @@
     width: 28px;
 }
 
+.m3u-sidebar-toggle-handle:active {
+    background: #7e22ce;
+}
+
 /* 아이콘 회전 트랜지션 (열림/닫힘 자동 반전) */
 .m3u-sidebar-toggle-handle i,
 .m3u-sidebar-toggle-handle svg {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     color: #ffffff;
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: none;
@@ -77,8 +85,8 @@
 /* 사이드바 접힘 상태일 때 버튼 위치 및 아이콘 방향 */
 .m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle {
     left: 0 !important;
-    border-left: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 0 10px 10px 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 0 12px 12px 0;
 }
 
 .m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle i,
@@ -441,7 +449,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 2000;
 }
 
 .m3u-modal-content {
