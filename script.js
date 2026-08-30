@@ -28,6 +28,7 @@
     function initM3UPlayer() {
         const container = document.querySelector('.m3u-container');
         const sidebar = document.getElementById('m3u-sidebar');
+        const hotspot = document.getElementById('m3u-sidebar-hotspot');
         const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
         const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
 
@@ -64,7 +65,7 @@
         const currentEpgInfo = document.getElementById('current-epg-info');
         const btnReloadStream = document.getElementById('btn-reload-stream');
 
-        if (!btnOpenSources || !videoElement || !container || !sidebar) return;
+        if (!btnOpenSources || !videoElement || !container || !sidebar || !btnSidebarToggle) return;
 
         let allChannels = window.__ALIVE_CACHE__.channels || [];
         let filteredChannels = [];
@@ -80,43 +81,46 @@
         let isHandleHovered = false;
         let lastVisibleState = true;
 
-        // 사이드바 상태 제어
+        // 사이드바 상태 제어 플래그
         let isSidebarCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
 
+        // 3초 자동 숨김 타이머 시작 함수
+        function startAutoHideTimer() {
+            if (autoHideTimer) clearTimeout(autoHideTimer);
+            if (!isSidebarCollapsed) return;
+
+            autoHideTimer = setTimeout(() => {
+                if (!isHandleHovered && isSidebarCollapsed && btnSidebarToggle) {
+                    btnSidebarToggle.classList.add('hidden');
+                }
+            }, 3000);
+        }
+
+        // 토글 핸들 노출 함수
         function showToggleHandle() {
             if (!btnSidebarToggle) return;
             btnSidebarToggle.classList.remove('hidden');
-            if (autoHideTimer) clearTimeout(autoHideTimer);
-
-            if (isSidebarCollapsed) {
-                autoHideTimer = setTimeout(() => {
-                    if (!isHandleHovered && isSidebarCollapsed) {
-                        btnSidebarToggle.classList.add('hidden');
-                    }
-                }, 3000);
-            }
+            startAutoHideTimer();
         }
 
+        // 사이드바 UI 동기화 함수
         function updateSidebarUI() {
             if (isSidebarCollapsed) {
                 container.classList.add('sidebar-collapsed');
-                if (btnSidebarToggle) {
-                    btnSidebarToggle.setAttribute('title', '채널 목록 펼치기');
-                    showToggleHandle();
-                }
+                btnSidebarToggle.setAttribute('title', '채널 목록 펼치기');
+                showToggleHandle();
             } else {
                 container.classList.remove('sidebar-collapsed');
-                if (btnSidebarToggle) {
-                    btnSidebarToggle.setAttribute('title', '채널 목록 접기');
-                    btnSidebarToggle.classList.remove('hidden');
-                    if (autoHideTimer) clearTimeout(autoHideTimer);
-                }
+                btnSidebarToggle.setAttribute('title', '채널 목록 접기');
+                btnSidebarToggle.classList.remove('hidden');
+                if (autoHideTimer) clearTimeout(autoHideTimer);
             }
             localStorage.setItem('bookoasis_m3u_sidebar_collapsed', isSidebarCollapsed ? 'true' : 'false');
         }
 
         updateSidebarUI();
 
+        // 사이드바 토글 동작
         function toggleSidebar(e) {
             if (e) {
                 e.preventDefault();
@@ -126,31 +130,44 @@
             updateSidebarUI();
         }
 
-        if (btnSidebarToggle) {
-            btnSidebarToggle.onclick = toggleSidebar;
-            btnSidebarToggle.addEventListener('mouseenter', () => {
-                isHandleHovered = true;
-                if (autoHideTimer) clearTimeout(autoHideTimer);
-                btnSidebarToggle.classList.remove('hidden');
+        btnSidebarToggle.onclick = toggleSidebar;
+
+        // 버튼 마우스 호버 제어 (호버 중 숨김 방지)
+        btnSidebarToggle.addEventListener('mouseenter', () => {
+            isHandleHovered = true;
+            if (autoHideTimer) clearTimeout(autoHideTimer);
+            btnSidebarToggle.classList.remove('hidden');
+        });
+
+        btnSidebarToggle.addEventListener('mouseleave', () => {
+            isHandleHovered = false;
+            if (isSidebarCollapsed) startAutoHideTimer();
+        });
+
+        if (btnToggleSidebar) btnToggleSidebar.onclick = toggleSidebar;
+
+        // 핫스팟 감지 영역 진입 시 즉시 핸들 표시
+        if (hotspot) {
+            hotspot.addEventListener('mouseenter', () => {
+                if (isSidebarCollapsed) showToggleHandle();
             });
-            btnSidebarToggle.addEventListener('mouseleave', () => {
-                isHandleHovered = false;
+            hotspot.addEventListener('mousemove', () => {
                 if (isSidebarCollapsed) showToggleHandle();
             });
         }
 
-        if (btnToggleSidebar) btnToggleSidebar.onclick = toggleSidebar;
-
+        // 컨테이너 좌측 60px 이내 커서 감지 시 핸들 표시
         container.addEventListener('mousemove', (e) => {
             if (isSidebarCollapsed) {
                 const rect = container.getBoundingClientRect();
                 const relativeX = e.clientX - rect.left;
-                if (relativeX <= 80 && relativeX >= 0) {
+                if (relativeX <= 60 && relativeX >= 0) {
                     showToggleHandle();
                 }
             }
         });
 
+        // 이벤트 위임 처리
         container.addEventListener('click', (e) => {
             const toggleBtn = e.target.closest('#btn-sidebar-toggle, #btn-toggle-sidebar');
             if (toggleBtn) {
@@ -864,7 +881,6 @@
             }
         }
 
-        // 안정적인 HLS 라이브 버퍼 엔진 설정
         function getHlsConfig(mode) {
             const baseConfig = {
                 enableWorker: true,
@@ -878,7 +894,6 @@
             };
 
             if (mode === 'smooth') {
-                // 안정적인 라이브 버퍼 모드: 슬라이딩 윈도우 청크 유실 방지 및 지터 허용
                 return {
                     ...baseConfig,
                     lowLatencyMode: true,
@@ -892,7 +907,6 @@
                     nudgeMaxRetry: 5,
                 };
             } else if (mode === 'low_latency') {
-                // 초저지연 모드: 실시간 동기화 우선
                 return {
                     ...baseConfig,
                     lowLatencyMode: true,
@@ -905,7 +919,6 @@
                     nudgeMaxRetry: 4,
                 };
             } else {
-                // 표준 균형 모드
                 return {
                     ...baseConfig,
                     lowLatencyMode: true,

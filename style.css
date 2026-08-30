@@ -33,6 +33,23 @@
     pointer-events: none;
 }
 
+/* 좌측 핫스팟 감지 영역 (사이드바 접힘 시에만 활성화) */
+.m3u-sidebar-hotspot {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 45px;
+    height: 100%;
+    z-index: 995;
+    background: transparent;
+    pointer-events: auto;
+}
+
+.m3u-container.sidebar-collapsed .m3u-sidebar-hotspot {
+    display: block;
+}
+
 /* 경계선 중앙 슬라이드 토글 탭 핸들 */
 .m3u-sidebar-toggle-handle {
     position: absolute;
@@ -62,24 +79,19 @@
     user-select: none;
     touch-action: manipulation;
     opacity: 1;
+    visibility: visible;
 }
 
 .m3u-sidebar-toggle-handle:hover {
     background: #9333ea;
     width: 30px;
     opacity: 1 !important;
+    visibility: visible !important;
     transform: translateY(-50%) !important;
 }
 
 .m3u-sidebar-toggle-handle:active {
     background: #7e22ce;
-}
-
-/* 3초 미사용 시 숨김 (Auto-Hide) 스타일 */
-.m3u-sidebar-toggle-handle.hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(-50%) translateX(-100%);
 }
 
 /* 아이콘 회전 트랜지션 */
@@ -101,6 +113,14 @@
 .m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle i,
 .m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle svg {
     transform: rotate(180deg);
+}
+
+/* 3초 미사용 시 완전 숨김 스타일 (우선순위 강제 적용) */
+.m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle.hidden {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(-50%) translateX(-100%) !important;
+    pointer-events: none !important;
 }
 
 .m3u-sidebar-header {
