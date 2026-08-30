@@ -77,28 +77,30 @@
         let heartbeatTimer = null;
         let lastVisibleState = true;
 
-        // 경계선 슬라이드 탭 핸들 제어
+        // 경계선 슬라이드 탭 핸들 상태 제어
         function setSidebarCollapsed(collapsed) {
             if (collapsed) {
                 sidebar.classList.add('collapsed');
                 container.classList.add('sidebar-collapsed');
-                btnSidebarToggle.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
                 btnSidebarToggle.title = '채널 목록 펼치기';
                 localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'true');
             } else {
                 sidebar.classList.remove('collapsed');
                 container.classList.remove('sidebar-collapsed');
-                btnSidebarToggle.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
                 btnSidebarToggle.title = '채널 목록 접기';
                 localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'false');
             }
         }
 
+        // 초기 저장된 사이드바 상태 복원
         const initialCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
         setSidebarCollapsed(initialCollapsed);
 
-        btnSidebarToggle.onclick = () => {
-            const isCurrentlyCollapsed = sidebar.classList.contains('collapsed');
+        // 클릭 이벤트 핸들러 단독 바인딩
+        btnSidebarToggle.onclick = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const isCurrentlyCollapsed = container.classList.contains('sidebar-collapsed') || sidebar.classList.contains('collapsed');
             setSidebarCollapsed(!isCurrentlyCollapsed);
         };
 
@@ -298,12 +300,12 @@
         function updateFavButtons() {
             if (!currentChannel) {
                 btnFavCurrent.classList.remove('active');
-                btnFavCurrent.innerHTML = '<i class="fa-regular fa-star"></i>';
+                btnFavCurrent.innerHTML = '<i class="fa-regular fa-star far fa-star"></i>';
                 return;
             }
             const isFav = favorites.includes(currentChannel.name);
             btnFavCurrent.classList.toggle('active', isFav);
-            btnFavCurrent.innerHTML = isFav ? '<i class="fa-solid fa-star"></i>' : '<i class="fa-regular fa-star"></i>';
+            btnFavCurrent.innerHTML = isFav ? '<i class="fa-solid fa-star fas fa-star"></i>' : '<i class="fa-regular fa-star far fa-star"></i>';
         }
 
         btnFavCurrent.onclick = () => {
@@ -740,7 +742,7 @@
                 const favBtn = document.createElement('button');
                 const isFav = favorites.includes(channel.name);
                 favBtn.className = `channel-fav-btn ${isFav ? 'active' : ''}`;
-                favBtn.innerHTML = isFav ? '<i class="fa-solid fa-star"></i>' : '<i class="fa-regular fa-star"></i>';
+                favBtn.innerHTML = isFav ? '<i class="fa-solid fa-star fas fa-star"></i>' : '<i class="fa-regular fa-star far fa-star"></i>';
                 favBtn.onclick = (e) => {
                     e.stopPropagation();
                     toggleFavorite(channel);

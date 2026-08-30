@@ -5,13 +5,13 @@
         <div class="m3u-sidebar-header">
             <div class="m3u-action-toolbar">
                 <button id="btn-open-sources" class="m3u-btn m3u-btn-primary" title="M3U 및 EPG 주소 관리">
-                    <i class="fa-solid fa-layer-group"></i> ⚙️ 소스 관리
+                    <i class="fa-solid fa-layer-group fas fa-layer-group"></i> ⚙️ 소스 관리
                 </button>
                 <button id="btn-check-health" class="m3u-btn m3u-btn-cyan" title="방송 스트림 가용성 점검">
-                    <i class="fa-solid fa-stethoscope"></i> 점검
+                    <i class="fa-solid fa-stethoscope fas fa-stethoscope"></i> 점검
                 </button>
                 <button id="btn-refresh-all" class="m3u-btn m3u-btn-secondary m3u-btn-icon" title="채널 및 EPG 새로고침">
-                    <i class="fa-solid fa-rotate-right"></i>
+                    <i class="fa-solid fa-rotate-right fas fa-redo"></i>
                 </button>
             </div>
 
@@ -31,7 +31,7 @@
             <span id="epg-status-badge" class="m3u-badge">EPG 대기</span>
             <span id="health-status-badge" class="m3u-badge" style="display: none;">점검 중...</span>
             <span id="loading-spinner" class="m3u-spinner" style="display: none;">
-                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <i class="fa-solid fa-circle-notch fas fa-spinner fa-spin"></i>
             </span>
         </div>
 
@@ -42,8 +42,8 @@
     </aside>
 
     <!-- 채널 패널 경계선 중앙 접기/펼치기 토글 핸들 -->
-    <button id="btn-sidebar-toggle" class="m3u-sidebar-toggle-handle" title="채널 목록 접기/펼치기">
-        <i class="fa-solid fa-chevron-left"></i>
+    <button id="btn-sidebar-toggle" class="m3u-sidebar-toggle-handle" type="button" title="채널 목록 접기/펼치기">
+        <i class="fa-solid fa-chevron-left fas fa-chevron-left"></i>
     </button>
 
     <!-- 우측 비디오 메인 플레이어 -->
@@ -58,7 +58,7 @@
             <div class="current-channel-meta">
                 <div class="current-channel-top">
                     <button id="btn-fav-current" class="m3u-btn-fav" title="현재 채널 즐겨찾기">
-                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star far fa-star"></i>
                     </button>
                     <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
                     <span id="current-channel-group" class="current-group">그룹: -</span>
@@ -69,7 +69,7 @@
             </div>
             <div class="current-channel-actions">
                 <button id="btn-reload-stream" class="m3u-btn m3u-btn-secondary" title="스트림 재연결">
-                    <i class="fa-solid fa-arrows-rotate"></i> 재연결
+                    <i class="fa-solid fa-arrows-rotate fas fa-sync-alt"></i> 재연결
                 </button>
             </div>
         </div>
@@ -79,14 +79,14 @@
     <div id="m3u-modal-overlay" class="m3u-modal-overlay" style="display: none;">
         <div class="m3u-modal-content">
             <div class="m3u-modal-header">
-                <h3><i class="fa-solid fa-sliders"></i> ALIVE 플레이어 설정</h3>
+                <h3><i class="fa-solid fa-sliders fas fa-sliders-h"></i> ALIVE 플레이어 설정</h3>
                 <button id="btn-close-modal" class="m3u-modal-close">&times;</button>
             </div>
             
             <div class="m3u-modal-body">
                 <!-- 1. 플레이리스트 관리 -->
                 <div class="m3u-modal-section">
-                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-list-ul"></i> 플레이리스트 관리 (M3U)</h4>
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-list-ul fas fa-list-ul"></i> 플레이리스트 관리 (M3U)</h4>
                     <div class="m3u-form-group">
                         <label>주소 입력창 1 (기본)</label>
                         <input type="text" id="cfg-m3u-url1" class="m3u-input" placeholder="https://.../playlist1.m3u">
@@ -99,7 +99,7 @@
 
                 <!-- 2. EPG 설정 -->
                 <div class="m3u-modal-section">
-                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-calendar-days"></i> EPG 설정 (우선순위 순)</h4>
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-calendar-days fas fa-calendar-alt"></i> EPG 설정 (우선순위 순)</h4>
                     <div class="m3u-form-group">
                         <label>EPG 주소 1 (최우선)</label>
                         <input type="text" id="cfg-epg-url1" class="m3u-input" placeholder="http://.../epg_primary.xml">
@@ -112,7 +112,7 @@
 
                 <!-- 3. EPG 자동 갱신 주기 -->
                 <div class="m3u-modal-section">
-                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-clock-rotate-left"></i> EPG 주소 갱신</h4>
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-clock-rotate-left fas fa-history"></i> EPG 주소 갱신</h4>
                     <div class="m3u-form-group">
                         <label>자동 갱신 주기</label>
                         <select id="cfg-epg-interval" class="m3u-select">
@@ -127,7 +127,7 @@
 
                 <!-- 4. 재생 동작 및 버퍼/싱크 설정 -->
                 <div class="m3u-modal-section">
-                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-play"></i> 재생 동작 및 버퍼/싱크 모드</h4>
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-play fas fa-play"></i> 재생 동작 및 버퍼/싱크 모드</h4>
                     <div class="m3u-form-group">
                         <label>스트림 버퍼 및 싱크 모드</label>
                         <select id="cfg-playback-mode" class="m3u-select">
