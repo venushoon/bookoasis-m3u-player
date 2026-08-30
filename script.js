@@ -83,26 +83,17 @@
         // 사이드바 상태 제어
         let isSidebarCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
 
-        // 토글 핸들 표시 및 3초 자동 숨김 스케줄러
         function showToggleHandle() {
             if (!btnSidebarToggle) return;
             btnSidebarToggle.classList.remove('hidden');
             if (autoHideTimer) clearTimeout(autoHideTimer);
 
-            // 접힌 상태일 때만 3초 후 자동 숨김 예약
             if (isSidebarCollapsed) {
                 autoHideTimer = setTimeout(() => {
                     if (!isHandleHovered && isSidebarCollapsed) {
                         btnSidebarToggle.classList.add('hidden');
                     }
                 }, 3000);
-            }
-        }
-
-        function hideToggleHandleImmediately() {
-            if (autoHideTimer) clearTimeout(autoHideTimer);
-            if (btnSidebarToggle && isSidebarCollapsed && !isHandleHovered) {
-                btnSidebarToggle.classList.add('hidden');
             }
         }
 
@@ -150,20 +141,16 @@
 
         if (btnToggleSidebar) btnToggleSidebar.onclick = toggleSidebar;
 
-        // 화면 좌측 근처(0 ~ 80px) 마우스 접근 시 자동 노출 감지
         container.addEventListener('mousemove', (e) => {
             if (isSidebarCollapsed) {
                 const rect = container.getBoundingClientRect();
                 const relativeX = e.clientX - rect.left;
-                
-                // 마우스가 화면 좌측 80px 이내로 오면 핸들 즉시 노출
                 if (relativeX <= 80 && relativeX >= 0) {
                     showToggleHandle();
                 }
             }
         });
 
-        // 이벤트 위임 처리
         container.addEventListener('click', (e) => {
             const toggleBtn = e.target.closest('#btn-sidebar-toggle, #btn-toggle-sidebar');
             if (toggleBtn) {
@@ -522,7 +509,6 @@
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
                     let rawLogo = (logoMatch ? logoMatch[1] : '').trim();
                     
-                    // None 및 유효하지 않은 주소 필터링
                     if (rawLogo && rawLogo.toLowerCase() !== 'none' && (rawLogo.startsWith('http://') || rawLogo.startsWith('https://'))) {
                         currentItem.logo = rawLogo.replace(/^http:\/\//i, 'https://');
                     } else {
@@ -878,53 +864,57 @@
             }
         }
 
+        // 안정적인 HLS 라이브 버퍼 엔진 설정
         function getHlsConfig(mode) {
             const baseConfig = {
                 enableWorker: true,
-                manifestLoadingTimeOut: 15000,
-                manifestLoadingMaxRetry: 6,
-                levelLoadingTimeOut: 15000,
-                levelLoadingMaxRetry: 6,
-                fragLoadingTimeOut: 20000,
-                fragLoadingMaxRetry: 8,
+                liveDurationInfinity: true,
+                manifestLoadingTimeOut: 12000,
+                manifestLoadingMaxRetry: 5,
+                levelLoadingTimeOut: 12000,
+                levelLoadingMaxRetry: 5,
+                fragLoadingTimeOut: 18000,
+                fragLoadingMaxRetry: 6,
             };
 
             if (mode === 'smooth') {
+                // 안정적인 라이브 버퍼 모드: 슬라이딩 윈도우 청크 유실 방지 및 지터 허용
                 return {
                     ...baseConfig,
-                    lowLatencyMode: false,
-                    backBufferLength: 60,
-                    maxBufferLength: 60,
-                    maxMaxBufferLength: 120,
-                    liveSyncDurationCount: 5,
-                    liveMaxLatencyDurationCount: 15,
-                    maxBufferHole: 0.2,
+                    lowLatencyMode: true,
+                    backBufferLength: 20,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 8,
+                    maxBufferHole: 0.5,
                     nudgeOffset: 0.1,
-                    nudgeMaxRetry: 10,
-                    highBufferWatchdogPeriod: 2,
+                    nudgeMaxRetry: 5,
                 };
             } else if (mode === 'low_latency') {
+                // 초저지연 모드: 실시간 동기화 우선
+                return {
+                    ...baseConfig,
+                    lowLatencyMode: true,
+                    backBufferLength: 10,
+                    maxBufferLength: 12,
+                    maxMaxBufferLength: 24,
+                    liveSyncDurationCount: 2,
+                    liveMaxLatencyDurationCount: 5,
+                    maxBufferHole: 0.3,
+                    nudgeMaxRetry: 4,
+                };
+            } else {
+                // 표준 균형 모드
                 return {
                     ...baseConfig,
                     lowLatencyMode: true,
                     backBufferLength: 15,
-                    maxBufferLength: 15,
-                    maxMaxBufferLength: 30,
-                    liveSyncDurationCount: 2,
-                    liveMaxLatencyDurationCount: 6,
-                    maxBufferHole: 0.1,
-                    nudgeMaxRetry: 5,
-                };
-            } else {
-                return {
-                    ...baseConfig,
-                    lowLatencyMode: true,
-                    backBufferLength: 30,
-                    maxBufferLength: 30,
-                    maxMaxBufferLength: 60,
+                    maxBufferLength: 20,
+                    maxMaxBufferLength: 40,
                     liveSyncDurationCount: 3,
-                    liveMaxLatencyDurationCount: 10,
-                    maxBufferHole: 0.15,
+                    liveMaxLatencyDurationCount: 6,
+                    maxBufferHole: 0.4,
                     nudgeMaxRetry: 5,
                 };
             }
@@ -973,14 +963,14 @@
                                 hls.startLoad();
                                 break;
                             case Hls.ErrorTypes.MEDIA_ERROR:
-                                console.warn('[ALIVE] 버퍼 스톨/싱크 오차 감지, 자동 버퍼 복구...');
+                                console.warn('[ALIVE] 미디어 버퍼 스톨 복구 시도...');
                                 hls.recoverMediaError();
                                 break;
                             default:
-                                console.error('[ALIVE] 스트림 오류:', data);
+                                console.error('[ALIVE] 스트림 fatal 오류:', data);
                                 stopPlayback();
                                 if (videoOverlayMsg) {
-                                    videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. 재연결을 시도하세요.';
+                                    videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
                                     videoOverlayMsg.style.display = 'block';
                                 }
                                 break;
