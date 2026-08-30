@@ -78,96 +78,52 @@
         let epgTimer = null;
         let heartbeatTimer = null;
         let autoHideTimer = null;
-        let isHandleHovered = false;
         let lastVisibleState = true;
 
-        // 사이드바 상태 제어 플래그
+        // 사이드바 상태 제어
         let isSidebarCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
 
-        // 3초 자동 숨김 타이머 시작 함수
-        function startAutoHideTimer() {
-            if (autoHideTimer) clearTimeout(autoHideTimer);
-            if (!isSidebarCollapsed) return;
+        function updateSidebarUI(triggerTempShow = false) {
+            if (autoHideTimer) {
+                clearTimeout(autoHideTimer);
+                autoHideTimer = null;
+            }
 
-            autoHideTimer = setTimeout(() => {
-                if (!isHandleHovered && isSidebarCollapsed && btnSidebarToggle) {
-                    btnSidebarToggle.classList.add('hidden');
-                }
-            }, 3000);
-        }
-
-        // 토글 핸들 노출 함수
-        function showToggleHandle() {
-            if (!btnSidebarToggle) return;
-            btnSidebarToggle.classList.remove('hidden');
-            startAutoHideTimer();
-        }
-
-        // 사이드바 UI 동기화 함수
-        function updateSidebarUI() {
             if (isSidebarCollapsed) {
                 container.classList.add('sidebar-collapsed');
                 btnSidebarToggle.setAttribute('title', '채널 목록 펼치기');
-                showToggleHandle();
+
+                if (triggerTempShow) {
+                    btnSidebarToggle.classList.add('show-temporarily');
+                    autoHideTimer = setTimeout(() => {
+                        btnSidebarToggle.classList.remove('show-temporarily');
+                    }, 3000);
+                } else {
+                    btnSidebarToggle.classList.remove('show-temporarily');
+                }
             } else {
                 container.classList.remove('sidebar-collapsed');
+                btnSidebarToggle.classList.remove('show-temporarily');
                 btnSidebarToggle.setAttribute('title', '채널 목록 접기');
-                btnSidebarToggle.classList.remove('hidden');
-                if (autoHideTimer) clearTimeout(autoHideTimer);
             }
             localStorage.setItem('bookoasis_m3u_sidebar_collapsed', isSidebarCollapsed ? 'true' : 'false');
         }
 
-        updateSidebarUI();
+        updateSidebarUI(false);
 
-        // 사이드바 토글 동작
         function toggleSidebar(e) {
             if (e) {
                 e.preventDefault();
                 e.stopPropagation();
             }
             isSidebarCollapsed = !isSidebarCollapsed;
-            updateSidebarUI();
+            updateSidebarUI(true);
         }
 
         btnSidebarToggle.onclick = toggleSidebar;
-
-        // 버튼 마우스 호버 제어 (호버 중 숨김 방지)
-        btnSidebarToggle.addEventListener('mouseenter', () => {
-            isHandleHovered = true;
-            if (autoHideTimer) clearTimeout(autoHideTimer);
-            btnSidebarToggle.classList.remove('hidden');
-        });
-
-        btnSidebarToggle.addEventListener('mouseleave', () => {
-            isHandleHovered = false;
-            if (isSidebarCollapsed) startAutoHideTimer();
-        });
-
         if (btnToggleSidebar) btnToggleSidebar.onclick = toggleSidebar;
 
-        // 핫스팟 감지 영역 진입 시 즉시 핸들 표시
-        if (hotspot) {
-            hotspot.addEventListener('mouseenter', () => {
-                if (isSidebarCollapsed) showToggleHandle();
-            });
-            hotspot.addEventListener('mousemove', () => {
-                if (isSidebarCollapsed) showToggleHandle();
-            });
-        }
-
-        // 컨테이너 좌측 60px 이내 커서 감지 시 핸들 표시
-        container.addEventListener('mousemove', (e) => {
-            if (isSidebarCollapsed) {
-                const rect = container.getBoundingClientRect();
-                const relativeX = e.clientX - rect.left;
-                if (relativeX <= 60 && relativeX >= 0) {
-                    showToggleHandle();
-                }
-            }
-        });
-
-        // 이벤트 위임 처리
+        // 이벤트 위임
         container.addEventListener('click', (e) => {
             const toggleBtn = e.target.closest('#btn-sidebar-toggle, #btn-toggle-sidebar');
             if (toggleBtn) {
@@ -256,7 +212,7 @@
         window.__ALIVE_CLEANUP__ = cleanupAll;
 
         function onTabRestored() {
-            updateSidebarUI();
+            updateSidebarUI(false);
 
             if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
                 refreshAllSources(false);

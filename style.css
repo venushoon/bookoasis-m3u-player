@@ -9,7 +9,7 @@
     position: relative;
 }
 
-/* 좌측 사이드 패널 기본 (열린 상태) */
+/* 좌측 사이드 패널 */
 .m3u-sidebar {
     width: 380px;
     min-width: 380px;
@@ -26,14 +26,14 @@
     overflow: hidden;
 }
 
-/* 사이드바 접힘 상태 스타일 */
+/* 사이드바 접힘 상태 */
 .m3u-container.sidebar-collapsed .m3u-sidebar {
     margin-left: -380px;
     opacity: 0;
     pointer-events: none;
 }
 
-/* 좌측 핫스팟 감지 영역 (사이드바 접힘 시에만 활성화) */
+/* 좌측 핫스팟 감지 영역 */
 .m3u-sidebar-hotspot {
     display: none;
     position: absolute;
@@ -41,7 +41,7 @@
     left: 0;
     width: 45px;
     height: 100%;
-    z-index: 995;
+    z-index: 998;
     background: transparent;
     pointer-events: auto;
 }
@@ -50,7 +50,7 @@
     display: block;
 }
 
-/* 경계선 중앙 슬라이드 토글 탭 핸들 */
+/* 슬라이드 토글 탭 핸들 */
 .m3u-sidebar-toggle-handle {
     position: absolute;
     top: 50%;
@@ -78,23 +78,17 @@
     padding: 0;
     user-select: none;
     touch-action: manipulation;
-    opacity: 1;
-    visibility: visible;
 }
 
 .m3u-sidebar-toggle-handle:hover {
     background: #9333ea;
     width: 30px;
-    opacity: 1 !important;
-    visibility: visible !important;
-    transform: translateY(-50%) !important;
 }
 
 .m3u-sidebar-toggle-handle:active {
     background: #7e22ce;
 }
 
-/* 아이콘 회전 트랜지션 */
 .m3u-sidebar-toggle-handle i,
 .m3u-sidebar-toggle-handle svg {
     font-size: 0.95rem;
@@ -103,11 +97,15 @@
     pointer-events: none;
 }
 
-/* 사이드바 접힘 상태일 때 버튼 위치 및 아이콘 방향 */
+/* 사이드바 접힘 시 버튼 기본 숨김 처리 */
 .m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle {
     left: 0;
     border-left: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 0 12px 12px 0;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-50%) translateX(-100%);
+    pointer-events: none;
 }
 
 .m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle i,
@@ -115,12 +113,14 @@
     transform: rotate(180deg);
 }
 
-/* 3초 미사용 시 완전 숨김 스타일 (우선순위 강제 적용) */
-.m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle.hidden {
-    opacity: 0 !important;
-    visibility: hidden !important;
-    transform: translateY(-50%) translateX(-100%) !important;
-    pointer-events: none !important;
+/* 핫스팟 호버, 핸들 호버, 3초 임시 노출 시 확실하게 표시 */
+.m3u-container.sidebar-collapsed .m3u-sidebar-hotspot:hover ~ .m3u-sidebar-toggle-handle,
+.m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle:hover,
+.m3u-container.sidebar-collapsed .m3u-sidebar-toggle-handle.show-temporarily {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: translateY(-50%) translateX(0) !important;
+    pointer-events: auto !important;
 }
 
 .m3u-sidebar-header {
@@ -382,7 +382,7 @@
     text-overflow: ellipsis;
 }
 
-/* 우측 비디오 뷰어 */
+/* 우측 비디오 메인 뷰어 (자막 잘림 방지 최적화) */
 .m3u-main-player {
     flex: 1;
     display: flex;
@@ -390,23 +390,30 @@
     background: #000000;
     height: 100%;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .m3u-player-wrapper {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     background: #000000;
+    overflow: hidden;
 }
 
 .m3u-video {
     width: 100%;
     height: 100%;
+    max-width: 100%;
     max-height: 100%;
     object-fit: contain;
     outline: none;
+    display: block;
 }
 
 .m3u-overlay-msg {
@@ -417,10 +424,13 @@
     padding: 12px 20px;
     border-radius: 8px;
     pointer-events: none;
+    z-index: 5;
 }
 
+/* 하단 채널 정보 바 고정 */
 .m3u-current-channel-bar {
-    min-height: 68px;
+    flex-shrink: 0;
+    min-height: 64px;
     background: var(--app-bg-card);
     border-top: 1px solid var(--app-border);
     display: flex;
@@ -428,6 +438,7 @@
     justify-content: space-between;
     padding: 10px 16px;
     box-sizing: border-box;
+    z-index: 20;
 }
 
 .current-channel-top {
@@ -558,7 +569,6 @@
     font-weight: 600;
 }
 
-/* 체크박스 설정 스타일 */
 .m3u-checkbox-wrapper {
     display: flex;
     flex-direction: column;
