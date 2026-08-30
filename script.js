@@ -42,7 +42,7 @@
 
         let allChannels = [];
         let filteredChannels = [];
-        let epgData = {};
+        let epgData = {}; // key -> [ { start, stop, title } ]
         let currentChannel = null;
         let hls = null;
 
@@ -51,7 +51,7 @@
             settingsPanel.style.display = isHidden ? 'flex' : 'none';
         };
 
-        // 안전한 프록시 URL 생성 헬퍼
+        // 프록시 URL 래퍼
         function wrapProxy(url) {
             if (!corsProxyCheck || !corsProxyCheck.checked) {
                 return url;
@@ -65,6 +65,12 @@
             return proxyBase.endsWith('/') ? proxyBase + url : proxyBase + '/' + url;
         }
 
+        // 채널명/ID 비교용 정규화 헬퍼 (공백, 대소문자, 특수기호 제거)
+        function normalizeKey(str) {
+            if (!str) return '';
+            return str.toLowerCase().replace(/[\s\-_.\(\)\[\]HD|FHD|UHD|4K|tv|티비]/gi, '');
+        }
+
         function loadSavedDefaults() {
             const savedM3u = localStorage.getItem('bookoasis_m3u_url') || '';
             const savedEpg = localStorage.getItem('bookoasis_epg_url') || '';
@@ -75,7 +81,6 @@
             if (savedEpg) epgUrlInput.value = savedEpg;
             if (savedProxy) corsProxyInput.value = savedProxy;
             
-            // 기본값은 프록시 해제(false)로 안전하게 초기화
             if (savedUseProxy !== null) {
                 corsProxyCheck.checked = (savedUseProxy === 'true');
             } else {
@@ -108,6 +113,7 @@
             if (e.key === 'Enter') btnLoadM3u.click();
         };
 
+        // M3U 파서
         async function loadM3U(rawUrl) {
             showLoading(true);
             if (videoOverlayMsg) {
@@ -130,7 +136,7 @@
             } catch (error) {
                 console.error('[M3U Player] M3U 로드 실패:', error);
                 if (videoOverlayMsg) {
-                    videoOverlayMsg.textContent = 'M3U 로드 실패: 주소 및 프록시 체크 여부를 확인하세요.';
+                    videoOverlayMsg.textContent = 'M3U 로드 실패: 주소 및 프록시 설정을 확인하세요.';
                     videoOverlayMsg.style.display = 'block';
                 }
                 if (channelCountBadge) channelCountBadge.textContent = '로드 실패';
@@ -153,6 +159,9 @@
                     const idMatch = line.match(/tvg-id="([^"]+)"/i);
                     currentItem.id = idMatch ? idMatch[1] : '';
 
+                    const nameAttrMatch = line.match(/tvg-name="([^"]+)"/i);
+                    currentItem.tvgName = nameAttrMatch ? nameAttrMatch[1] : '';
+
                     const groupMatch = line.match(/group-title="([^"]+)"/i);
                     currentItem.group = groupMatch ? groupMatch[1] : '기타';
 
@@ -160,7 +169,7 @@
                     currentItem.logo = logoMatch ? logoMatch[1] : '';
 
                     const nameParts = line.split(',');
-                    currentItem.name = nameParts.length > 1 ? nameParts.slice(1).join(',').trim() : '이름 없는 채널';
+                    currentItem.name = nameParts.length > 1 ? nameParts.slice(1).join(',').trim() : (currentItem.tvgName || '이름 없는 채널');
                 } else if (!line.startsWith('#') && currentItem) {
                     currentItem.url = line;
                     channels.push(currentItem);
@@ -170,6 +179,7 @@
             return channels;
         }
 
+        // XMLTV EPG 파서
         async function loadEPG(rawUrl) {
             epgStatusBadge.textContent = 'EPG 로딩 중...';
             try {
@@ -189,47 +199,108 @@
             }
         }
 
+        function parseXMLTVDate(dateStr) {
+            if (!dateStr) return new Date(0);
+            const clean = dateStr.trim();
+            // YYYYMMDDHHMMSS [+/-]HHMM
+            const match = clean.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?(?:\s*([+-]\d{2})(\d{2}))?/);
+            if (!match) {
+                const parsed = new Date(clean);
+                return isNaN(parsed) ? new Date(0) : parsed;
+            }
+            const y = match[1];
+            const m = match[2];
+            const d = match[3];
+            const h = match[4];
+            const min = match[5];
+            const s = match[6] || '00';
+            const offH = match[7] || '+09';
+            const offM = match[8] || '00';
+            return new Date(`${y}-${m}-${d}T${h}:${min}:${s}${offH}:${offM}`);
+        }
+
         function parseXMLTV(xmlStr) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlStr, 'text/xml');
+            
+            // 1. Channel 노드 파싱 (ID와 display-name 간 별칭 사전 구성)
+            const channelNodes = xmlDoc.getElementsByTagName('channel');
+            const aliasMap = {}; 
+            
+            for (let i = 0; i < channelNodes.length; i++) {
+                const cNode = channelNodes[i];
+                const cId = cNode.getAttribute('id');
+                if (!cId) continue;
+                
+                aliasMap[cId] = cId;
+                aliasMap[normalizeKey(cId)] = cId;
+                
+                const dispNames = cNode.getElementsByTagName('display-name');
+                for (let j = 0; j < dispNames.length; j++) {
+                    const dName = dispNames[j].textContent.trim();
+                    if (dName) {
+                        aliasMap[dName] = cId;
+                        aliasMap[normalizeKey(dName)] = cId;
+                    }
+                }
+            }
+
+            // 2. Programme 노드 파싱
             const programmes = xmlDoc.getElementsByTagName('programme');
             epgData = {};
 
             for (let i = 0; i < programmes.length; i++) {
                 const prog = programmes[i];
-                const channel = prog.getAttribute('channel');
+                const channelAttr = prog.getAttribute('channel');
                 const startStr = prog.getAttribute('start');
                 const stopStr = prog.getAttribute('stop');
                 const titleElem = prog.getElementsByTagName('title')[0];
-                const title = titleElem ? titleElem.textContent : '제목 없음';
+                const title = titleElem ? titleElem.textContent.trim() : '제목 없음';
 
-                if (channel && startStr && stopStr) {
-                    if (!epgData[channel]) epgData[channel] = [];
-                    epgData[channel].push({
+                if (channelAttr && startStr && stopStr) {
+                    const realId = aliasMap[channelAttr] || channelAttr;
+                    const normId = normalizeKey(realId);
+                    
+                    const item = {
                         start: parseXMLTVDate(startStr),
                         stop: parseXMLTVDate(stopStr),
                         title: title
-                    });
+                    };
+                    
+                    if (!epgData[realId]) epgData[realId] = [];
+                    epgData[realId].push(item);
+                    
+                    if (normId && normId !== realId) {
+                        if (!epgData[normId]) epgData[normId] = [];
+                        epgData[normId].push(item);
+                    }
                 }
             }
         }
 
-        function parseXMLTVDate(dateStr) {
-            const raw = dateStr.split(' ')[0];
-            const y = raw.substring(0, 4);
-            const m = raw.substring(4, 6) - 1;
-            const d = raw.substring(6, 8);
-            const h = raw.substring(8, 10);
-            const min = raw.substring(10, 12);
-            const s = raw.substring(12, 14) || '00';
-            return new Date(Date.UTC(y, m, d, h - 9, min, s));
-        }
-
         function getNowProgram(channel) {
-            const list = epgData[channel.id] || epgData[channel.name];
-            if (!list || list.length === 0) return null;
+            // 다양한 채널 식별 키로 순차 매칭 시도
+            const candidateKeys = [
+                channel.id,
+                channel.tvgName,
+                channel.name,
+                normalizeKey(channel.id),
+                normalizeKey(channel.tvgName),
+                normalizeKey(channel.name)
+            ];
+
+            let programList = null;
+            for (const key of candidateKeys) {
+                if (key && epgData[key]) {
+                    programList = epgData[key];
+                    break;
+                }
+            }
+
+            if (!programList || programList.length === 0) return null;
+
             const now = new Date();
-            return list.find(p => now >= p.start && now <= p.stop) || null;
+            return programList.find(p => now >= p.start && now <= p.stop) || null;
         }
 
         function updateGroupSelect() {
@@ -293,6 +364,7 @@
                 details.appendChild(nameDiv);
                 details.appendChild(groupDiv);
 
+                // 실시간 현재 방송 정보 삽입
                 const nowProg = getNowProgram(channel);
                 if (nowProg) {
                     const epgDiv = document.createElement('div');
