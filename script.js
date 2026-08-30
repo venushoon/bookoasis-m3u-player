@@ -54,6 +54,7 @@
         let hls = null;
         let epgTimer = null;
 
+        // 코어 프록시 연동
         async function resolveProxyUrl(url) {
             if (!url) return null;
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getProxyUrl === 'function') {
@@ -171,7 +172,7 @@
                 updateGroupSelect();
                 applyFilter();
             } catch (err) {
-                console.error('[M3U Player] 로드 에러:', err);
+                console.error('[ALIVE Player] 로드 에러:', err);
             } finally {
                 showLoading(false);
             }
@@ -190,7 +191,7 @@
                 const textData = await response.text();
                 return parseM3U(textData, sourceLabel);
             } catch (e) {
-                console.warn(`[M3U Player] ${sourceLabel} 로드 실패:`, e);
+                console.warn(`[ALIVE Player] ${sourceLabel} 로드 실패:`, e);
                 return [];
             }
         }
@@ -264,7 +265,7 @@
                 const xmlText = await res.text();
                 return parseXMLTV(xmlText);
             } catch (err) {
-                console.warn('[M3U Player] EPG 가져오기 실패:', err);
+                console.warn('[ALIVE Player] EPG 가져오기 실패:', err);
                 return {};
             }
         }
@@ -394,7 +395,6 @@
             const mins = parseInt(localStorage.getItem('hoon_epg_interval') || '60', 10);
             if (mins > 0) {
                 epgTimer = setInterval(() => {
-                    console.log('[M3U Player] EPG 자동 갱신 실행');
                     loadAllEPGs();
                 }, mins * 60 * 1000);
             }
@@ -557,6 +557,7 @@
             }
         }
 
+        // 라이브 스트리밍 안정화 및 끊김 자동 복구 엔진
         async function playChannel(channel) {
             currentChannel = channel;
             if (currentChannelName) currentChannelName.textContent = channel.name;
@@ -570,19 +571,55 @@
             const targetStreamUrl = await resolveStreamUrl(channel.url);
 
             if (window.Hls && Hls.isSupported()) {
-                if (hls) hls.destroy();
+                if (hls) {
+                    hls.destroy();
+                }
 
-                hls = new Hls({ enableWorker: true });
+                // 라이브 버퍼 최적화 설정 (끊김 방지)
+                hls = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 30,         // 지난 버퍼 30초 유지 후 메모리 비움
+                    maxBufferLength: 30,          // 전방 30초만 버퍼링 (실시간성 유지)
+                    maxMaxBufferLength: 60,
+                    liveSyncDurationCount: 3,     // 라이브 엣지 3개 세그먼트 동기화
+                    liveMaxLatencyDurationCount: 10,
+                    manifestLoadingTimeOut: 10000,
+                    manifestLoadingMaxRetry: 5,
+                    levelLoadingTimeOut: 10000,
+                    levelLoadingMaxRetry: 5,
+                    fragLoadingTimeOut: 15000,
+                    fragLoadingMaxRetry: 6,
+                });
+
                 hls.loadSource(targetStreamUrl);
                 hls.attachMedia(videoElement);
 
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     videoElement.play().catch(() => {});
                 });
+
+                // 실시간 지능형 에러 복구 루틴
                 hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal && videoOverlayMsg) {
-                        videoOverlayMsg.textContent = '스트림 재생 오류: 외부 도메인 등록 상태를 확인하세요.';
-                        videoOverlayMsg.style.display = 'block';
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.warn('[ALIVE] 네트워크 세그먼트 지연 감지, 스트림 재연결 시도...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.warn('[ALIVE] 미디어 버퍼 스톨 감지, 자동 버퍼 복구 실행...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.error('[ALIVE] 복구 불가능한 스트림 오류:', data);
+                                hls.destroy();
+                                if (videoOverlayMsg) {
+                                    videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. 재연결을 시도하세요.';
+                                    videoOverlayMsg.style.display = 'block';
+                                }
+                                break;
+                        }
                     }
                 });
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
@@ -592,6 +629,13 @@
                 });
             }
         }
+
+        // 브라우저 버퍼 정체(Stall) 시 미세 넛지
+        videoElement.addEventListener('waiting', () => {
+            if (hls && !videoElement.paused) {
+                hls.startLoad();
+            }
+        });
 
         if (btnReloadStream) {
             btnReloadStream.onclick = () => {
