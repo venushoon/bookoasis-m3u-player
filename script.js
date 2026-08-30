@@ -1,5 +1,5 @@
 (function () {
-    // HLS.js 라이브러리 동적 로드
+    // HLS.js 라이브러리 동적 로드 헬퍼
     function ensureHlsLoaded(callback) {
         if (window.Hls) {
             callback();
@@ -11,7 +11,7 @@
         document.head.appendChild(script);
     }
 
-    async function initM3UPlayer() {
+    function initM3UPlayer() {
         const m3uUrlInput = document.getElementById('m3u-url-input');
         const btnLoadM3u = document.getElementById('btn-load-m3u');
         const groupSelect = document.getElementById('m3u-group-select');
@@ -32,37 +32,27 @@
         let filteredChannels = [];
         let currentChannel = null;
         let hls = null;
-        let autoPlay = true;
 
-        // 1. 서버 환경설정에 저장된 DEFAULT_M3U_URL 가져오기
-        let defaultUrlFromServer = '';
-        try {
-            const res = await fetch('/api/media/plugins/dashboard-data?plugin_id=m3u_player&type=general');
-            if (res.ok) {
-                const data = await res.json();
-                if (data.config) {
-                    defaultUrlFromServer = data.config.DEFAULT_M3U_URL || '';
-                    if (typeof data.config.AUTO_PLAY === 'boolean') {
-                        autoPlay = data.config.AUTO_PLAY;
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[M3U Player] 환경설정 동기화 생략:', e);
+        // 로컬 스토리지에 저장된 마지막 M3U 주소 불러오기 및 자동 로드
+        const savedUrl = localStorage.getItem('bookoasis_m3u_last_url') || '';
+        if (savedUrl) {
+            m3uUrlInput.value = savedUrl;
+            loadM3U(savedUrl);
         }
 
-        // 2. 마지막 입력 URL 또는 환경설정 기본 URL 자동 적용
-        const targetUrl = localStorage.getItem('bookoasis_m3u_last_url') || defaultUrlFromServer;
-        if (targetUrl) {
-            m3uUrlInput.value = targetUrl;
-            loadM3U(targetUrl);
-        }
-
+        // 로드 버튼 클릭 이벤트
         btnLoadM3u.onclick = () => {
             const url = m3uUrlInput.value.trim();
             if (url) {
                 localStorage.setItem('bookoasis_m3u_last_url', url);
                 loadM3U(url);
+            }
+        };
+
+        // 엔터키 입력 시 자동 로드
+        m3uUrlInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                btnLoadM3u.click();
             }
         };
 
@@ -75,17 +65,31 @@
 
             try {
                 const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} (${response.statusText})`);
+                }
                 const textData = await response.text();
                 allChannels = parseM3U(textData);
 
+                if (allChannels.length === 0) {
+                    throw new Error('유효한 채널 목록을 찾을 수 없습니다.');
+                }
+
                 updateGroupSelect();
                 applyFilter();
-                if (videoOverlayMsg) videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
+
+                if (videoOverlayMsg) {
+                    videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
+                }
             } catch (error) {
                 console.error('[M3U Player] 로드 실패:', error);
-                if (videoOverlayMsg) videoOverlayMsg.textContent = 'M3U 로드 실패. URL 또는 CORS 정책을 확인하세요.';
-                if (channelCountBadge) channelCountBadge.textContent = '로드 실패';
+                if (videoOverlayMsg) {
+                    videoOverlayMsg.textContent = 'M3U 로드 실패: URL 유효성 및 CORS 정책을 확인하세요.';
+                    videoOverlayMsg.style.display = 'block';
+                }
+                if (channelCountBadge) {
+                    channelCountBadge.textContent = '로드 실패';
+                }
             } finally {
                 showLoading(false);
             }
@@ -142,7 +146,9 @@
                 return matchGroup && matchSearch;
             });
 
-            if (channelCountBadge) channelCountBadge.textContent = `채널 ${filteredChannels.length}개`;
+            if (channelCountBadge) {
+                channelCountBadge.textContent = `채널 ${filteredChannels.length}개`;
+            }
             renderChannelList();
         }
 
@@ -201,9 +207,7 @@
                 hls.loadSource(streamUrl);
                 hls.attachMedia(videoElement);
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    if (autoPlay) {
-                        videoElement.play().catch(() => {});
-                    }
+                    videoElement.play().catch(() => {});
                 });
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (data.fatal && videoOverlayMsg) {
@@ -214,9 +218,7 @@
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
                 videoElement.src = streamUrl;
                 videoElement.addEventListener('loadedmetadata', () => {
-                    if (autoPlay) {
-                        videoElement.play().catch(() => {});
-                    }
+                    videoElement.play().catch(() => {});
                 });
             }
         }
