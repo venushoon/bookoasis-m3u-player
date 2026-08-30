@@ -76,18 +76,50 @@
         let hls = null;
         let epgTimer = null;
         let heartbeatTimer = null;
+        let autoHideTimer = null;
+        let isHandleHovered = false;
         let lastVisibleState = true;
 
         // 사이드바 상태 제어
         let isSidebarCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
 
+        // 토글 핸들 표시 및 3초 자동 숨김 스케줄러
+        function showToggleHandle() {
+            if (!btnSidebarToggle) return;
+            btnSidebarToggle.classList.remove('hidden');
+            if (autoHideTimer) clearTimeout(autoHideTimer);
+
+            // 접힌 상태일 때만 3초 후 자동 숨김 예약
+            if (isSidebarCollapsed) {
+                autoHideTimer = setTimeout(() => {
+                    if (!isHandleHovered && isSidebarCollapsed) {
+                        btnSidebarToggle.classList.add('hidden');
+                    }
+                }, 3000);
+            }
+        }
+
+        function hideToggleHandleImmediately() {
+            if (autoHideTimer) clearTimeout(autoHideTimer);
+            if (btnSidebarToggle && isSidebarCollapsed && !isHandleHovered) {
+                btnSidebarToggle.classList.add('hidden');
+            }
+        }
+
         function updateSidebarUI() {
             if (isSidebarCollapsed) {
                 container.classList.add('sidebar-collapsed');
-                if (btnSidebarToggle) btnSidebarToggle.setAttribute('title', '채널 목록 펼치기');
+                if (btnSidebarToggle) {
+                    btnSidebarToggle.setAttribute('title', '채널 목록 펼치기');
+                    showToggleHandle();
+                }
             } else {
                 container.classList.remove('sidebar-collapsed');
-                if (btnSidebarToggle) btnSidebarToggle.setAttribute('title', '채널 목록 접기');
+                if (btnSidebarToggle) {
+                    btnSidebarToggle.setAttribute('title', '채널 목록 접기');
+                    btnSidebarToggle.classList.remove('hidden');
+                    if (autoHideTimer) clearTimeout(autoHideTimer);
+                }
             }
             localStorage.setItem('bookoasis_m3u_sidebar_collapsed', isSidebarCollapsed ? 'true' : 'false');
         }
@@ -103,10 +135,35 @@
             updateSidebarUI();
         }
 
-        if (btnSidebarToggle) btnSidebarToggle.onclick = toggleSidebar;
+        if (btnSidebarToggle) {
+            btnSidebarToggle.onclick = toggleSidebar;
+            btnSidebarToggle.addEventListener('mouseenter', () => {
+                isHandleHovered = true;
+                if (autoHideTimer) clearTimeout(autoHideTimer);
+                btnSidebarToggle.classList.remove('hidden');
+            });
+            btnSidebarToggle.addEventListener('mouseleave', () => {
+                isHandleHovered = false;
+                if (isSidebarCollapsed) showToggleHandle();
+            });
+        }
+
         if (btnToggleSidebar) btnToggleSidebar.onclick = toggleSidebar;
 
-        // 이벤트 위임 처리 (DOM 갱신 시에도 100% 동작 보장)
+        // 화면 좌측 근처(0 ~ 80px) 마우스 접근 시 자동 노출 감지
+        container.addEventListener('mousemove', (e) => {
+            if (isSidebarCollapsed) {
+                const rect = container.getBoundingClientRect();
+                const relativeX = e.clientX - rect.left;
+                
+                // 마우스가 화면 좌측 80px 이내로 오면 핸들 즉시 노출
+                if (relativeX <= 80 && relativeX >= 0) {
+                    showToggleHandle();
+                }
+            }
+        });
+
+        // 이벤트 위임 처리
         container.addEventListener('click', (e) => {
             const toggleBtn = e.target.closest('#btn-sidebar-toggle, #btn-toggle-sidebar');
             if (toggleBtn) {
@@ -182,6 +239,10 @@
             if (heartbeatTimer) {
                 clearInterval(heartbeatTimer);
                 heartbeatTimer = null;
+            }
+            if (autoHideTimer) {
+                clearTimeout(autoHideTimer);
+                autoHideTimer = null;
             }
             window.removeEventListener('popstate', handleNavChange);
             window.removeEventListener('hashchange', handleNavChange);
@@ -461,6 +522,7 @@
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
                     let rawLogo = (logoMatch ? logoMatch[1] : '').trim();
                     
+                    // None 및 유효하지 않은 주소 필터링
                     if (rawLogo && rawLogo.toLowerCase() !== 'none' && (rawLogo.startsWith('http://') || rawLogo.startsWith('https://'))) {
                         currentItem.logo = rawLogo.replace(/^http:\/\//i, 'https://');
                     } else {
