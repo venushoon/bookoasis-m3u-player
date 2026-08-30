@@ -153,6 +153,7 @@
     border-radius: 4px;
     background: var(--app-bg-card);
     border: 1px solid var(--app-border);
+    font-weight: 600;
 }
 
 .m3u-epg-badge.active {
@@ -200,7 +201,7 @@
 
 .m3u-channel-item.active .channel-group,
 .m3u-channel-item.active .channel-epg-now {
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .channel-logo {
@@ -234,15 +235,16 @@
 }
 
 .channel-epg-now {
-    font-size: 0.72rem;
-    color: var(--app-accent);
-    margin-top: 2px;
+    font-size: 0.75rem;
+    color: #10b981;
+    font-weight: 500;
+    margin-top: 3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* 우측 비디오 플레이어 */
+/* 우측 비디오 메인 플레이어 */
 .m3u-main-player {
     flex: 1;
     display: flex;
