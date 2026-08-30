@@ -3,7 +3,7 @@ from plugins.metadata.base import BaseMetadataProvider
 
 
 class M3UPlayerPlugin(BaseMetadataProvider):
-    id = "hoon_m3u_player"
+    id = "bookoasis_m3u_player"
     name = "ALIVE 라이브 플레이어"
     is_searchable = False
 
@@ -24,7 +24,7 @@ class M3UPlayerPlugin(BaseMetadataProvider):
         "raw_base_url": "https://raw.githubusercontent.com/venushoon/bookoasis-m3u-player/main",
         "files": [
             "__init__.py",
-            "hoon_m3u_player.py",
+            "bookoasis_m3u_player.py",
             "index.html",
             "style.css",
             "script.js",
