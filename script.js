@@ -56,6 +56,14 @@
         let epgTimer = null;
         let heartbeatTimer = null;
 
+        // PIP 활성화 여부 판별
+        function isPipActive() {
+            return (
+                document.pictureInPictureElement === videoElement ||
+                (videoElement.webkitPresentationMode && videoElement.webkitPresentationMode === 'picture-in-picture')
+            );
+        }
+
         // 실제 화면 노출 여부 검사 (부모의 display: none 까지 추적)
         function isElementVisible(el) {
             if (!el || !document.body.contains(el)) return false;
@@ -90,7 +98,7 @@
             }
         }
 
-        // 전체 정리 루틴 (메뉴 이탈/창 닫기)
+        // 전체 정리 루틴
         function cleanupAll() {
             stopPlayback();
 
@@ -104,27 +112,39 @@
             }
         }
 
-        // 200ms 주기로 가시성 감시하여 다른 탭/메뉴 전환 시 오디오 즉각 차단
+        // 200ms 주기로 가시성 감시 (PIP 모드일 때는 화면이 가려져도 유지)
         heartbeatTimer = setInterval(() => {
-            if (!isElementVisible(container)) {
+            if (!isElementVisible(container) && !isPipActive()) {
                 if (hls || (videoElement && !videoElement.paused)) {
                     stopPlayback();
                 }
             }
         }, 200);
 
-        // 사이드바 클릭, 뒤로가기, 탭 전환 시 강제 정지 이벤트 등록
-        window.addEventListener('popstate', stopPlayback);
-        window.addEventListener('hashchange', stopPlayback);
+        // PIP 팝업을 닫았을 때, 현재 메뉴가 플레이어가 아니라면 즉시 정지
+        videoElement.addEventListener('leavepictureinpicture', () => {
+            setTimeout(() => {
+                if (!isElementVisible(container)) {
+                    stopPlayback();
+                }
+            }, 50);
+        });
+
+        // 네비게이션 변경 시 핸들러
+        function handleNavChange() {
+            if (!isPipActive() && !isElementVisible(container)) {
+                stopPlayback();
+            }
+        }
+
+        window.addEventListener('popstate', handleNavChange);
+        window.addEventListener('hashchange', handleNavChange);
         window.addEventListener('beforeunload', cleanupAll);
+        
         document.addEventListener('click', (e) => {
             const navTarget = e.target.closest('a, button, [data-category], [data-tab], .sidebar-item, .nav-link');
             if (navTarget && !container.contains(navTarget)) {
-                setTimeout(() => {
-                    if (!isElementVisible(container)) {
-                        stopPlayback();
-                    }
-                }, 50);
+                setTimeout(handleNavChange, 50);
             }
         });
 
@@ -292,7 +312,6 @@
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
                     let rawLogo = (logoMatch ? logoMatch[1] : '').trim();
                     
-                    // None 문자열 및 비정상 URL 완전 방어
                     if (rawLogo && rawLogo.toLowerCase() !== 'none' && (rawLogo.startsWith('http://') || rawLogo.startsWith('https://'))) {
                         currentItem.logo = rawLogo.replace(/^http:\/\//i, 'https://');
                     } else {
@@ -637,7 +656,7 @@
         }
 
         async function playChannel(channel) {
-            if (!isElementVisible(container)) return;
+            if (!isElementVisible(container) && !isPipActive()) return;
 
             currentChannel = channel;
             if (currentChannelName) currentChannelName.textContent = channel.name;
@@ -673,7 +692,7 @@
                 hls.attachMedia(videoElement);
 
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    if (isElementVisible(container)) {
+                    if (isElementVisible(container) || isPipActive()) {
                         videoElement.play().catch(() => {});
                     } else {
                         stopPlayback();
@@ -681,7 +700,7 @@
                 });
 
                 hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal && isElementVisible(container)) {
+                    if (data.fatal && (isElementVisible(container) || isPipActive())) {
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
@@ -705,7 +724,7 @@
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
                 videoElement.src = targetStreamUrl;
                 videoElement.addEventListener('loadedmetadata', () => {
-                    if (isElementVisible(container)) {
+                    if (isElementVisible(container) || isPipActive()) {
                         videoElement.play().catch(() => {});
                     } else {
                         stopPlayback();
@@ -715,7 +734,7 @@
         }
 
         videoElement.addEventListener('waiting', () => {
-            if (hls && !videoElement.paused && isElementVisible(container)) {
+            if (hls && !videoElement.paused && (isElementVisible(container) || isPipActive())) {
                 hls.startLoad();
             }
         });
