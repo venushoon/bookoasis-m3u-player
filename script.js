@@ -41,6 +41,7 @@
         const cfgEpgUrl1 = document.getElementById('cfg-epg-url1');
         const cfgEpgUrl2 = document.getElementById('cfg-epg-url2');
         const cfgEpgInterval = document.getElementById('cfg-epg-interval');
+        const cfgPlaybackMode = document.getElementById('cfg-playback-mode');
         const cfgAutoResume = document.getElementById('cfg-auto-resume');
 
         const groupSelect = document.getElementById('m3u-group-select');
@@ -73,12 +74,10 @@
         let heartbeatTimer = null;
         let lastVisibleState = true;
 
-        // 자동 재생 설정 여부 확인
         function isAutoResumeEnabled() {
             return localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
         }
 
-        // PIP 활성화 여부 확인
         function isPipActive() {
             return (
                 document.pictureInPictureElement === videoElement ||
@@ -86,7 +85,6 @@
             );
         }
 
-        // 실제 화면 노출 여부 검사
         function isElementVisible(el) {
             if (!el || !document.body.contains(el)) return false;
             if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
@@ -102,7 +100,6 @@
             return true;
         }
 
-        // 스트림 정지 루틴
         function stopPlayback() {
             if (hls) {
                 try {
@@ -120,7 +117,6 @@
             }
         }
 
-        // 초기화 화면으로 UI 리셋
         function resetToInitialUI() {
             stopPlayback();
             currentChannel = null;
@@ -136,7 +132,6 @@
             renderChannelList();
         }
 
-        // 전체 정리 루틴
         function cleanupAll() {
             stopPlayback();
 
@@ -155,7 +150,6 @@
 
         window.__ALIVE_CLEANUP__ = cleanupAll;
 
-        // 화면 복귀 시 라이프사이클 처리
         function onTabRestored() {
             if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
                 refreshAllSources(false);
@@ -164,7 +158,6 @@
                 applyFilter();
                 updateEpgBadgeStatus();
 
-                // 설정에 따라 자동 재생 또는 초기 화면 유지
                 if (isAutoResumeEnabled()) {
                     if (currentChannel) {
                         playChannel(currentChannel);
@@ -181,7 +174,6 @@
             }
         }
 
-        // 200ms 주기로 화면 가시성 감시
         heartbeatTimer = setInterval(() => {
             const currentlyVisible = isElementVisible(container);
 
@@ -296,6 +288,7 @@
             cfgEpgUrl1.value = localStorage.getItem('hoon_epg_url1') || '';
             cfgEpgUrl2.value = localStorage.getItem('hoon_epg_url2') || '';
             cfgEpgInterval.value = localStorage.getItem('hoon_epg_interval') || '60';
+            cfgPlaybackMode.value = localStorage.getItem('bookoasis_m3u_playback_mode') || 'smooth';
             cfgAutoResume.checked = localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
             modalOverlay.style.display = 'flex';
         }
@@ -314,6 +307,7 @@
             localStorage.setItem('hoon_epg_url1', cfgEpgUrl1.value.trim());
             localStorage.setItem('hoon_epg_url2', cfgEpgUrl2.value.trim());
             localStorage.setItem('hoon_epg_interval', cfgEpgInterval.value);
+            localStorage.setItem('bookoasis_m3u_playback_mode', cfgPlaybackMode.value);
             localStorage.setItem('bookoasis_m3u_autoresume', cfgAutoResume.checked ? 'true' : 'false');
             closeModal();
             refreshAllSources(true);
@@ -368,7 +362,6 @@
                 updateGroupSelect();
                 applyFilter();
 
-                // 설정에 따른 초기 진입 처리
                 if (isAutoResumeEnabled()) {
                     const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
                     if (lastUrl && !currentChannel) {
@@ -781,6 +774,62 @@
             }
         }
 
+        // Hls.js 설정 생성기 (선택된 모드 반영)
+        function getHlsConfig(mode) {
+            const baseConfig = {
+                enableWorker: true,
+                manifestLoadingTimeOut: 15000,
+                manifestLoadingMaxRetry: 6,
+                levelLoadingTimeOut: 15000,
+                levelLoadingMaxRetry: 6,
+                fragLoadingTimeOut: 20000,
+                fragLoadingMaxRetry: 8,
+            };
+
+            if (mode === 'smooth') {
+                // 부드러운 재생 및 싱크 보정 (버퍼 극대화 & 홀 자동 스킵)
+                return {
+                    ...baseConfig,
+                    lowLatencyMode: false,
+                    backBufferLength: 60,
+                    maxBufferLength: 60,
+                    maxMaxBufferLength: 120,
+                    liveSyncDurationCount: 5,
+                    liveMaxLatencyDurationCount: 15,
+                    maxBufferHole: 0.2,
+                    nudgeOffset: 0.1,
+                    nudgeMaxRetry: 10,
+                    highBufferWatchdogPeriod: 2,
+                };
+            } else if (mode === 'low_latency') {
+                // 초저지연 모드 (딜레이 최소화)
+                return {
+                    ...baseConfig,
+                    lowLatencyMode: true,
+                    backBufferLength: 15,
+                    maxBufferLength: 15,
+                    maxMaxBufferLength: 30,
+                    liveSyncDurationCount: 2,
+                    liveMaxLatencyDurationCount: 6,
+                    maxBufferHole: 0.1,
+                    nudgeMaxRetry: 5,
+                };
+            } else {
+                // 표준 균형 모드
+                return {
+                    ...baseConfig,
+                    lowLatencyMode: true,
+                    backBufferLength: 30,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 10,
+                    maxBufferHole: 0.15,
+                    nudgeMaxRetry: 5,
+                };
+            }
+        }
+
         async function playChannel(channel) {
             if (!isElementVisible(container) && !isPipActive()) return;
 
@@ -801,22 +850,10 @@
             if (window.Hls && Hls.isSupported()) {
                 stopPlayback();
 
-                hls = new Hls({
-                    enableWorker: true,
-                    lowLatencyMode: true,
-                    backBufferLength: 30,
-                    maxBufferLength: 30,
-                    maxMaxBufferLength: 60,
-                    liveSyncDurationCount: 3,
-                    liveMaxLatencyDurationCount: 10,
-                    manifestLoadingTimeOut: 10000,
-                    manifestLoadingMaxRetry: 5,
-                    levelLoadingTimeOut: 10000,
-                    levelLoadingMaxRetry: 5,
-                    fragLoadingTimeOut: 15000,
-                    fragLoadingMaxRetry: 6,
-                });
+                const playbackMode = localStorage.getItem('bookoasis_m3u_playback_mode') || 'smooth';
+                const hlsConfig = getHlsConfig(playbackMode);
 
+                hls = new Hls(hlsConfig);
                 hls.loadSource(targetStreamUrl);
                 hls.attachMedia(videoElement);
 
@@ -836,7 +873,7 @@
                                 hls.startLoad();
                                 break;
                             case Hls.ErrorTypes.MEDIA_ERROR:
-                                console.warn('[ALIVE] 버퍼 스톨 감지, 자동 버퍼 복구...');
+                                console.warn('[ALIVE] 버퍼 스톨/싱크 오차 감지, 자동 버퍼 복구...');
                                 hls.recoverMediaError();
                                 break;
                             default:
