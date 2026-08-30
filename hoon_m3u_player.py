@@ -4,12 +4,12 @@ from plugins.metadata.base import BaseMetadataProvider
 
 class M3UPlayerPlugin(BaseMetadataProvider):
     id = "hoon_m3u_player"
-    name = "M3U 라이브 플레이어"
+    name = "ALIVE 라이브 플레이어"
     is_searchable = False
 
     # 사이드바 카테고리 1등 시민 메뉴 등록 규격
     category_tab = {
-        "title": "M3U 플레이어",
+        "title": "ALIVE 플레이어",
         "icon": "fa-solid fa-tv",
         "order": 85,
         "sessions": "all",
