@@ -1,4 +1,19 @@
 (function () {
+    // SPA 재진입 시 이전 인스턴스 전역 클린업
+    if (typeof window.__ALIVE_CLEANUP__ === 'function') {
+        window.__ALIVE_CLEANUP__();
+    }
+
+    // 전역 세션 캐시 (메뉴 이동 시 재다운로드 방지)
+    window.__ALIVE_CACHE__ = window.__ALIVE_CACHE__ || {
+        channels: [],
+        epgData1: {},
+        epgData2: {},
+        lastChannel: null,
+        channelHealth: {},
+        loaded: false
+    };
+
     function ensureHlsLoaded(callback) {
         if (window.Hls) {
             callback();
@@ -45,19 +60,19 @@
 
         if (!btnOpenSources || !videoElement || !container) return;
 
-        let allChannels = [];
+        let allChannels = window.__ALIVE_CACHE__.channels || [];
         let filteredChannels = [];
-        let epgData1 = {}; 
-        let epgData2 = {}; 
-        let channelHealth = {}; 
+        let epgData1 = window.__ALIVE_CACHE__.epgData1 || {}; 
+        let epgData2 = window.__ALIVE_CACHE__.epgData2 || {}; 
+        let channelHealth = window.__ALIVE_CACHE__.channelHealth || {}; 
         let favorites = []; 
-        let currentChannel = null;
+        let currentChannel = window.__ALIVE_CACHE__.lastChannel || null;
         let hls = null;
         let epgTimer = null;
         let heartbeatTimer = null;
         let lastVisibleState = true;
 
-        // PIP 활성화 여부 판별
+        // PIP 활성화 여부 확인
         function isPipActive() {
             return (
                 document.pictureInPictureElement === videoElement ||
@@ -65,7 +80,7 @@
             );
         }
 
-        // 실제 화면 노출 여부 검사 (부모의 display: none 까지 추적)
+        // 실제 화면 노출 여부 검사
         function isElementVisible(el) {
             if (!el || !document.body.contains(el)) return false;
             if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
@@ -81,7 +96,7 @@
             return true;
         }
 
-        // 스트림 및 오디오 완전 정지 루틴
+        // 스트림 정지 루틴
         function stopPlayback() {
             if (hls) {
                 try {
@@ -111,46 +126,45 @@
                 clearInterval(heartbeatTimer);
                 heartbeatTimer = null;
             }
+            window.removeEventListener('popstate', handleNavChange);
+            window.removeEventListener('hashchange', handleNavChange);
+            window.removeEventListener('beforeunload', cleanupAll);
         }
 
-        // 화면 복귀 시 자동 목록/상태 복원 루틴
+        window.__ALIVE_CLEANUP__ = cleanupAll;
+
+        // 화면 복귀 시 자동 목록 렌더링 및 이전 채널 자동 재생
         function onTabRestored() {
-            if (allChannels.length === 0) {
-                refreshAllSources();
+            if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
+                refreshAllSources(false);
             } else {
                 updateGroupSelect();
                 applyFilter();
-                
-                // 이전 선택 채널 복원 표시
-                const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
-                if (lastUrl && !currentChannel) {
-                    const found = allChannels.find(c => c.url === lastUrl);
-                    if (found) {
-                        currentChannel = found;
-                        if (currentChannelName) currentChannelName.textContent = found.name;
-                        if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${found.group} (${found.source || '기본'})`;
-                        if (videoOverlayMsg) {
-                            videoOverlayMsg.textContent = '채널을 클릭하여 재생을 시작하세요.';
-                            videoOverlayMsg.style.display = 'block';
+                updateEpgBadgeStatus();
+
+                // 마지막 채널 자동 이어보기
+                if (currentChannel) {
+                    playChannel(currentChannel);
+                } else {
+                    const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
+                    if (lastUrl) {
+                        const found = allChannels.find(c => c.url === lastUrl);
+                        if (found) {
+                            playChannel(found);
                         }
-                        updateFavButtons();
-                        updateCurrentEpgDisplay(found);
                     }
                 }
             }
         }
 
-        // 200ms 주기로 가시성 감시 및 화면 복귀/이탈 라이프사이클 처리
+        // 200ms 주기로 화면 가시성 감시
         heartbeatTimer = setInterval(() => {
             const currentlyVisible = isElementVisible(container);
 
-            // 1. 화면에 다시 들어왔을 때 자동 복구
             if (!lastVisibleState && currentlyVisible) {
                 lastVisibleState = true;
                 onTabRestored();
-            }
-            // 2. 화면을 벗어났을 때 오디오 정지
-            else if (lastVisibleState && !currentlyVisible) {
+            } else if (lastVisibleState && !currentlyVisible) {
                 lastVisibleState = false;
                 if (!isPipActive()) {
                     if (hls || (videoElement && !videoElement.paused)) {
@@ -160,7 +174,6 @@
             }
         }, 200);
 
-        // PIP 팝업을 닫았을 때, 현재 메뉴가 플레이어가 아니라면 즉시 정지
         videoElement.addEventListener('leavepictureinpicture', () => {
             setTimeout(() => {
                 if (!isElementVisible(container)) {
@@ -169,7 +182,6 @@
             }, 50);
         });
 
-        // 네비게이션 변경 시 핸들러
         function handleNavChange() {
             if (!isPipActive() && !isElementVisible(container)) {
                 stopPlayback();
@@ -179,7 +191,7 @@
         window.addEventListener('popstate', handleNavChange);
         window.addEventListener('hashchange', handleNavChange);
         window.addEventListener('beforeunload', cleanupAll);
-        
+
         document.addEventListener('click', (e) => {
             const navTarget = e.target.closest('a, button, [data-category], [data-tab], .sidebar-item, .nav-link');
             if (navTarget && !container.contains(navTarget)) {
@@ -278,10 +290,24 @@
             localStorage.setItem('hoon_epg_url2', cfgEpgUrl2.value.trim());
             localStorage.setItem('hoon_epg_interval', cfgEpgInterval.value);
             closeModal();
-            refreshAllSources();
+            refreshAllSources(true); // 설정 변경 시 강제 새로고침
         };
 
-        async function refreshAllSources() {
+        // 소스 로드 (forceRefresh가 true일 때만 네트워크 다운로드)
+        async function refreshAllSources(forceRefresh = false) {
+            // 캐시가 유효하고 강제 새로고침이 아닌 경우 즉시 캐시 데이터 사용
+            if (!forceRefresh && window.__ALIVE_CACHE__.loaded && window.__ALIVE_CACHE__.channels.length > 0) {
+                allChannels = window.__ALIVE_CACHE__.channels;
+                epgData1 = window.__ALIVE_CACHE__.epgData1;
+                epgData2 = window.__ALIVE_CACHE__.epgData2;
+                channelHealth = window.__ALIVE_CACHE__.channelHealth;
+                updateGroupSelect();
+                applyFilter();
+                updateEpgBadgeStatus();
+                if (currentChannel) playChannel(currentChannel);
+                return;
+            }
+
             showLoading(true);
             allChannels = [];
             channelHealth = {};
@@ -294,6 +320,9 @@
                 const [res1, res2] = await Promise.all([p1, p2]);
 
                 allChannels = [...res1, ...res2];
+                window.__ALIVE_CACHE__.channels = allChannels;
+                window.__ALIVE_CACHE__.loaded = true;
+
                 if (allChannels.length === 0) {
                     if (videoOverlayMsg) {
                         videoOverlayMsg.textContent = '[소스 관리]에서 M3U 주소를 등록해 주세요.';
@@ -309,6 +338,15 @@
 
                 updateGroupSelect();
                 applyFilter();
+
+                // 마지막 채널 복원
+                const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
+                if (lastUrl && !currentChannel) {
+                    const found = allChannels.find(c => c.url === lastUrl);
+                    if (found) {
+                        playChannel(found);
+                    }
+                }
             } catch (err) {
                 console.error('[ALIVE Player] 로드 에러:', err);
             } finally {
@@ -319,7 +357,7 @@
             setupEpgInterval();
         }
 
-        btnRefreshAll.onclick = refreshAllSources;
+        btnRefreshAll.onclick = () => refreshAllSources(true);
 
         async function fetchAndParseM3U(rawUrl, sourceLabel) {
             try {
@@ -374,13 +412,23 @@
             return channels;
         }
 
+        function updateEpgBadgeStatus() {
+            const total = Object.values(epgData1).reduce((s, a) => s + a.length, 0) + Object.values(epgData2).reduce((s, a) => s + a.length, 0);
+            if (total > 0) {
+                epgStatusBadge.textContent = `EPG 연동됨 (${total}개)`;
+                epgStatusBadge.classList.add('active');
+            } else {
+                epgStatusBadge.textContent = 'EPG 미등록';
+                epgStatusBadge.classList.remove('active');
+            }
+        }
+
         async function loadAllEPGs() {
             const epg1 = localStorage.getItem('hoon_epg_url1') || '';
             const epg2 = localStorage.getItem('hoon_epg_url2') || '';
 
             if (!epg1 && !epg2) {
-                epgStatusBadge.textContent = 'EPG 미등록';
-                epgStatusBadge.classList.remove('active');
+                updateEpgBadgeStatus();
                 return;
             }
 
@@ -392,10 +440,10 @@
             epgData1 = data1;
             epgData2 = data2;
 
-            const total = Object.values(epgData1).reduce((s, a) => s + a.length, 0) + Object.values(epgData2).reduce((s, a) => s + a.length, 0);
-            epgStatusBadge.textContent = `EPG 연동됨 (${total}개)`;
-            epgStatusBadge.classList.add('active');
+            window.__ALIVE_CACHE__.epgData1 = epgData1;
+            window.__ALIVE_CACHE__.epgData2 = epgData2;
 
+            updateEpgBadgeStatus();
             renderChannelList();
             if (currentChannel) updateCurrentEpgDisplay(currentChannel);
         }
@@ -557,6 +605,7 @@
                 while (queue.length > 0) {
                     const item = queue.shift();
                     channelHealth[item.url] = 'checking';
+                    window.__ALIVE_CACHE__.channelHealth = channelHealth;
                     renderChannelList();
 
                     try {
@@ -571,6 +620,7 @@
                     }
 
                     finished++;
+                    window.__ALIVE_CACHE__.channelHealth = channelHealth;
                     healthStatusBadge.textContent = `점검 중 (${Math.round((finished / total) * 100)}%)`;
                     renderChannelList();
                 }
@@ -704,6 +754,7 @@
             if (!isElementVisible(container) && !isPipActive()) return;
 
             currentChannel = channel;
+            window.__ALIVE_CACHE__.lastChannel = channel;
             localStorage.setItem('bookoasis_m3u_last_url', channel.url);
 
             if (currentChannelName) currentChannelName.textContent = channel.name;
@@ -800,7 +851,7 @@
         }
 
         loadFavorites();
-        refreshAllSources();
+        refreshAllSources(false);
     }
 
     ensureHlsLoaded(initM3UPlayer);
