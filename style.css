@@ -1,0 +1,231 @@
+/* 전역 레이아웃 */
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--app-bg-main);
+    color: var(--app-text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+}
+
+.m3u-container {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+    box-sizing: border-box;
+    background: var(--app-bg-main);
+}
+
+/* 좌측 사이드 패널 */
+.m3u-sidebar {
+    width: 360px;
+    min-width: 300px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--app-bg-sidebar);
+    border-right: 1px solid var(--app-border);
+    box-sizing: border-box;
+}
+
+.m3u-sidebar-header {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1px solid var(--app-border-light);
+}
+
+.m3u-input-group, .m3u-filter-group {
+    display: flex;
+    gap: 6px;
+}
+
+.m3u-input, .m3u-select {
+    flex: 1;
+    background: var(--app-input-bg);
+    color: var(--app-text-primary);
+    border: 1px solid var(--app-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.88rem;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.m3u-input:focus, .m3u-select:focus {
+    border-color: var(--app-accent);
+}
+
+.m3u-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.m3u-btn-primary {
+    background: var(--app-accent);
+    color: #ffffff;
+}
+
+.m3u-btn-primary:hover {
+    background: var(--app-accent-hover);
+}
+
+.m3u-btn-secondary {
+    background: var(--app-bg-card);
+    color: var(--app-text-primary);
+    border: 1px solid var(--app-border);
+}
+
+.m3u-btn-secondary:hover {
+    background: var(--app-bg-card-hover);
+}
+
+.m3u-channel-info-bar {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    color: var(--app-text-muted);
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--app-border-light);
+}
+
+.m3u-spinner {
+    color: var(--app-accent);
+    font-weight: bold;
+}
+
+/* 채널 리스트 */
+.m3u-channel-list {
+    flex: 1;
+    overflow-y: auto;
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+}
+
+.m3u-channel-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    background: var(--app-bg-card);
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+}
+
+.m3u-channel-item:hover {
+    background: var(--app-bg-card-hover);
+    border-color: var(--app-border);
+}
+
+.m3u-channel-item.active {
+    background: var(--app-accent);
+    color: #ffffff;
+}
+
+.m3u-channel-item.active .channel-group {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.channel-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    object-fit: contain;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.channel-details {
+    flex: 1;
+    overflow: hidden;
+}
+
+.channel-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.channel-group {
+    font-size: 0.75rem;
+    color: var(--app-text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 우측 플레이어 */
+.m3u-main-player {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #000000;
+    height: 100%;
+}
+
+.m3u-player-wrapper {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000000;
+}
+
+.m3u-video {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    outline: none;
+}
+
+.m3u-overlay-msg {
+    position: absolute;
+    color: #ffffff;
+    font-size: 1rem;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 12px 20px;
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+.m3u-current-channel-bar {
+    height: 64px;
+    background: var(--app-bg-card);
+    border-top: 1px solid var(--app-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    box-sizing: border-box;
+}
+
+.current-title {
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--app-text-primary);
+}
+
+.current-group {
+    margin: 2px 0 0 0;
+    font-size: 0.8rem;
+    color: var(--app-text-muted);
+}
