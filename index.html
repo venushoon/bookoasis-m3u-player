@@ -1,19 +1,18 @@
 <div class="m3u-container">
     <!-- 좌측 사이드 패널 -->
     <aside class="m3u-sidebar">
-        <!-- 상단 헤더 & 컨트롤 바 -->
         <div class="m3u-sidebar-header">
             <div class="m3u-input-group">
                 <input type="text" id="m3u-url-input" class="m3u-input" placeholder="M3U / M3U8 URL 입력..." autocomplete="off">
                 <button id="btn-load-m3u" class="m3u-btn m3u-btn-primary" title="재생목록 로드">
                     <i class="fa-solid fa-rotate"></i> 로드
                 </button>
-                <button id="btn-toggle-settings" class="m3u-btn m3u-btn-secondary" title="상세 설정">
+                <button id="btn-toggle-settings" class="m3u-btn m3u-btn-secondary" title="EPG 및 환경설정">
                     <i class="fa-solid fa-gear"></i>
                 </button>
             </div>
 
-            <!-- 상세 설정 패널 (접기/펼치기) -->
+            <!-- 환경설정 패널 (접기/펼치기) -->
             <div id="m3u-settings-panel" class="m3u-settings-panel" style="display: none;">
                 <div class="m3u-setting-item">
                     <label class="m3u-label">EPG (XMLTV) URL</label>
@@ -23,18 +22,13 @@
                     </div>
                 </div>
 
-                <div class="m3u-setting-item">
-                    <label class="m3u-label">CORS 프록시 주소</label>
-                    <input type="text" id="cors-proxy-input" class="m3u-input" placeholder="https://api.allorigins.win/raw?url=" autocomplete="off">
+                <div class="m3u-setting-info">
+                    <small>※ 원활한 스트림 재생을 위해 [설정 ⚙️ > 외부 도메인]에 대상 도메인을 등록해 주세요.</small>
                 </div>
 
                 <div class="m3u-setting-item-row">
-                    <label class="m3u-checkbox-label">
-                        <input type="checkbox" id="m3u-cors-proxy" checked>
-                        <span>CORS 프록시 경유</span>
-                    </label>
-                    <button id="btn-save-defaults" class="m3u-btn m3u-btn-accent" title="현재 설정을 기본값으로 브라우저에 저장">
-                        <i class="fa-solid fa-floppy-disk"></i> 기본값 저장
+                    <button id="btn-save-defaults" class="m3u-btn m3u-btn-accent" style="width: 100%; justify-content: center;">
+                        <i class="fa-solid fa-floppy-disk"></i> 현재 설정 기본값으로 저장
                     </button>
                 </div>
             </div>

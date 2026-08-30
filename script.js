@@ -1,6 +1,4 @@
 (function () {
-    const DEFAULT_PROXY_PRESET = 'https://api.allorigins.win/raw?url=';
-
     function ensureHlsLoaded(callback) {
         if (window.Hls) {
             callback();
@@ -20,8 +18,6 @@
         
         const epgUrlInput = document.getElementById('epg-url-input');
         const btnLoadEpg = document.getElementById('btn-load-epg');
-        const corsProxyInput = document.getElementById('cors-proxy-input');
-        const corsProxyCheck = document.getElementById('m3u-cors-proxy');
         const btnSaveDefaults = document.getElementById('btn-save-defaults');
 
         const groupSelect = document.getElementById('m3u-group-select');
@@ -51,20 +47,22 @@
             settingsPanel.style.display = isHidden ? 'flex' : 'none';
         };
 
-        // HTTPS 환경에서 HTTP 리소스 요청 시 자동 프록시 래핑
-        function wrapProxy(url) {
-            const isHttpsSite = window.location.protocol === 'https:';
-            const isHttpTarget = url.startsWith('http://');
-            const forceProxy = corsProxyCheck && corsProxyCheck.checked;
+        // BookOasis 정규 텍스트/데이터 프록시 URL 획득 헬퍼
+        async function resolveProxyUrl(url) {
+            if (!url) return null;
+            if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getProxyUrl === 'function') {
+                const proxied = await window.BookOasisPlugin.getProxyUrl(url);
+                return proxied || url;
+            }
+            return url;
+        }
 
-            if (forceProxy || (isHttpsSite && isHttpTarget)) {
-                let proxyBase = (corsProxyInput.value || '').trim();
-                if (!proxyBase) proxyBase = DEFAULT_PROXY_PRESET;
-
-                if (proxyBase.includes('=')) {
-                    return proxyBase + encodeURIComponent(url);
-                }
-                return proxyBase.endsWith('/') ? proxyBase + url : proxyBase + '/' + url;
+        // BookOasis 정규 HLS 스트림 프록시 URL 획득 헬퍼
+        async function resolveStreamUrl(url) {
+            if (!url) return null;
+            if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getStreamProxyUrl === 'function') {
+                const streamProxied = await window.BookOasisPlugin.getStreamProxyUrl(url);
+                return streamProxied || url;
             }
             return url;
         }
@@ -82,18 +80,9 @@
         function loadSavedDefaults() {
             const savedM3u = localStorage.getItem('bookoasis_m3u_url') || '';
             const savedEpg = localStorage.getItem('bookoasis_epg_url') || '';
-            const savedProxy = localStorage.getItem('bookoasis_cors_proxy') || '';
-            const savedUseProxy = localStorage.getItem('bookoasis_use_proxy');
 
             if (savedM3u) m3uUrlInput.value = savedM3u;
             if (savedEpg) epgUrlInput.value = savedEpg;
-            if (savedProxy) corsProxyInput.value = savedProxy;
-            
-            if (savedUseProxy !== null) {
-                corsProxyCheck.checked = (savedUseProxy === 'true');
-            } else {
-                corsProxyCheck.checked = false;
-            }
 
             if (savedM3u) loadM3U(savedM3u);
             if (savedEpg) loadEPG(savedEpg);
@@ -102,9 +91,7 @@
         btnSaveDefaults.onclick = () => {
             localStorage.setItem('bookoasis_m3u_url', m3uUrlInput.value.trim());
             localStorage.setItem('bookoasis_epg_url', epgUrlInput.value.trim());
-            localStorage.setItem('bookoasis_cors_proxy', corsProxyInput.value.trim());
-            localStorage.setItem('bookoasis_use_proxy', corsProxyCheck.checked ? 'true' : 'false');
-            alert('M3U, EPG 및 프록시 설정이 브라우저에 저장되었습니다.');
+            alert('M3U 및 EPG 주소가 기본값으로 저장되었습니다.');
         };
 
         btnLoadM3u.onclick = () => {
@@ -129,7 +116,7 @@
             }
 
             try {
-                const targetUrl = wrapProxy(rawUrl);
+                const targetUrl = await resolveProxyUrl(rawUrl);
                 const response = await fetch(targetUrl);
                 if (!response.ok) throw new Error(`HTTP ${response.status} (${response.statusText})`);
                 const textData = await response.text();
@@ -143,7 +130,7 @@
             } catch (error) {
                 console.error('[M3U Player] M3U 로드 실패:', error);
                 if (videoOverlayMsg) {
-                    videoOverlayMsg.textContent = 'M3U 로드 실패: 주소 및 네트워크 상태를 확인하세요.';
+                    videoOverlayMsg.textContent = 'M3U 로드 실패: [설정 > 외부 도메인] 등록 여부 및 URL을 확인하세요.';
                     videoOverlayMsg.style.display = 'block';
                 }
                 if (channelCountBadge) channelCountBadge.textContent = '로드 실패';
@@ -174,7 +161,6 @@
 
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
                     const rawLogo = logoMatch ? logoMatch[1] : '';
-                    // 'None' 문자열 또는 잘못된 로고 주소 필터링 (/None 404 에러 방지)
                     currentItem.logo = (rawLogo && rawLogo !== 'None' && rawLogo.startsWith('http')) ? rawLogo : '';
 
                     const nameParts = line.split(',');
@@ -190,23 +176,20 @@
 
         async function loadEPG(rawUrl) {
             epgStatusBadge.textContent = 'EPG 로딩 중...';
-            console.log('[M3U Player] EPG 다운로드 시작:', rawUrl);
             try {
-                const targetUrl = wrapProxy(rawUrl);
+                const targetUrl = await resolveProxyUrl(rawUrl);
                 const res = await fetch(targetUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const xmlText = await res.text();
                 parseXMLTV(xmlText);
                 
                 const totalProgs = Object.values(epgData).reduce((sum, arr) => sum + arr.length, 0);
-                console.log(`[M3U Player] EPG 파싱 완료: 총 ${totalProgs}개 프로그램 등록`);
-                
                 epgStatusBadge.textContent = `EPG 연동됨 (${totalProgs}개)`;
                 epgStatusBadge.classList.add('active');
                 renderChannelList();
                 if (currentChannel) updateCurrentEpgDisplay(currentChannel);
             } catch (err) {
-                console.error('[M3U Player] EPG 로드 실패 (Mixed Content 또는 네트워크 오류):', err);
+                console.error('[M3U Player] EPG 로드 실패:', err);
                 epgStatusBadge.textContent = 'EPG 로드 실패';
                 epgStatusBadge.classList.remove('active');
             }
@@ -368,7 +351,6 @@
                     li.classList.add('active');
                 }
 
-                // channel.logo가 http로 시작하는 정상 URL일 때만 img 태그 생성
                 if (channel.logo && channel.logo.startsWith('http')) {
                     const img = document.createElement('img');
                     img.className = 'channel-logo';
@@ -419,7 +401,7 @@
             }
         }
 
-        function playChannel(channel) {
+        async function playChannel(channel) {
             currentChannel = channel;
             if (currentChannelName) currentChannelName.textContent = channel.name;
             if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${channel.group}`;
@@ -428,26 +410,13 @@
             updateCurrentEpgDisplay(channel);
             renderChannelList();
 
-            const streamUrl = channel.url;
-            const useProxy = corsProxyCheck && corsProxyCheck.checked;
-            let proxyBase = (corsProxyInput.value || '').trim();
-            if (!proxyBase) proxyBase = DEFAULT_PROXY_PRESET;
+            // BookOasis getStreamProxyUrl API를 거쳐 스트림 URL 생성
+            const targetStreamUrl = await resolveStreamUrl(channel.url);
 
             if (window.Hls && Hls.isSupported()) {
                 if (hls) hls.destroy();
 
-                const hlsConfig = { enableWorker: true };
-                if (useProxy) {
-                    hlsConfig.xhrSetup = function (xhr, url) {
-                        if (!url.startsWith(proxyBase) && url.startsWith('http')) {
-                            const proxiedUrl = proxyBase.includes('=') ? proxyBase + encodeURIComponent(url) : (proxyBase.endsWith('/') ? proxyBase + url : proxyBase + '/' + url);
-                            xhr.open('GET', proxiedUrl, true);
-                        }
-                    };
-                }
-
-                hls = new Hls(hlsConfig);
-                const targetStreamUrl = useProxy ? wrapProxy(streamUrl) : streamUrl;
+                hls = new Hls({ enableWorker: true });
                 hls.loadSource(targetStreamUrl);
                 hls.attachMedia(videoElement);
 
@@ -456,12 +425,12 @@
                 });
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     if (data.fatal && videoOverlayMsg) {
-                        videoOverlayMsg.textContent = '스트림 재생 오류: 브라우저 Allow CORS 확장 프로그램을 활성화하세요.';
+                        videoOverlayMsg.textContent = '스트림 재생 오류: [설정 > 외부 도메인] 등록 상태를 확인하세요.';
                         videoOverlayMsg.style.display = 'block';
                     }
                 });
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                videoElement.src = useProxy ? wrapProxy(streamUrl) : streamUrl;
+                videoElement.src = targetStreamUrl;
                 videoElement.addEventListener('loadedmetadata', () => {
                     videoElement.play().catch(() => {});
                 });
