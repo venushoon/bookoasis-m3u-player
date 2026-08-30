@@ -1,62 +1,48 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <title>M3U Player</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- HLS.js 미디어 재생 라이브러리 -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-</head>
-<body>
-    <div class="m3u-container">
-        <!-- 좌측 사이드 패널: M3U 주소 입력 및 채널 목록 -->
-        <aside class="m3u-sidebar">
-            <div class="m3u-sidebar-header">
-                <div class="m3u-input-group">
-                    <input type="text" id="m3u-url-input" class="m3u-input" placeholder="M3U / M3U8 URL 입력..." autocomplete="off">
-                    <button id="btn-load-m3u" class="m3u-btn m3u-btn-primary" title="재생목록 로드">
-                        <i class="fa-solid fa-rotate"></i> 로드
-                    </button>
-                </div>
-                <div class="m3u-filter-group">
-                    <select id="m3u-group-select" class="m3u-select">
-                        <option value="ALL">전체 그룹</option>
-                    </select>
-                    <input type="text" id="m3u-search-input" class="m3u-input" placeholder="채널 검색..." autocomplete="off">
-                </div>
+<div class="m3u-container">
+    <!-- 좌측 사이드 패널: M3U 주소 입력 및 채널 목록 -->
+    <aside class="m3u-sidebar">
+        <div class="m3u-sidebar-header">
+            <div class="m3u-input-group">
+                <input type="text" id="m3u-url-input" class="m3u-input" placeholder="M3U / M3U8 URL 입력..." autocomplete="off">
+                <button id="btn-load-m3u" class="m3u-btn m3u-btn-primary" title="재생목록 로드">
+                    <i class="fa-solid fa-rotate"></i> 로드
+                </button>
             </div>
-
-            <div class="m3u-channel-info-bar">
-                <span id="channel-count-badge">채널 0개</span>
-                <span id="loading-spinner" class="m3u-spinner" style="display: none;">로딩 중...</span>
+            <div class="m3u-filter-group">
+                <select id="m3u-group-select" class="m3u-select">
+                    <option value="ALL">전체 그룹</option>
+                </select>
+                <input type="text" id="m3u-search-input" class="m3u-input" placeholder="채널 검색..." autocomplete="off">
             </div>
+        </div>
 
-            <ul id="m3u-channel-list" class="m3u-channel-list">
-                <!-- 채널 목록 동적 렌더링 -->
-            </ul>
-        </aside>
+        <div class="m3u-channel-info-bar">
+            <span id="channel-count-badge">채널 0개</span>
+            <span id="loading-spinner" class="m3u-spinner" style="display: none;">로딩 중...</span>
+        </div>
 
-        <!-- 우측 메인 영역: HLS 비디오 플레이어 화면 -->
-        <main class="m3u-main-player">
-            <div class="m3u-player-wrapper">
-                <video id="video-element" class="m3u-video" controls playsinline></video>
-                <div id="video-overlay-msg" class="m3u-overlay-msg">재생할 채널을 선택해 주세요.</div>
+        <ul id="m3u-channel-list" class="m3u-channel-list">
+            <!-- 채널 목록 동적 렌더링 -->
+        </ul>
+    </aside>
+
+    <!-- 우측 메인 영역: HLS 비디오 플레이어 화면 -->
+    <main class="m3u-main-player">
+        <div class="m3u-player-wrapper">
+            <video id="video-element" class="m3u-video" controls playsinline></video>
+            <div id="video-overlay-msg" class="m3u-overlay-msg">재생할 채널을 선택해 주세요.</div>
+        </div>
+
+        <div class="m3u-current-channel-bar">
+            <div class="current-channel-meta">
+                <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
+                <p id="current-channel-group" class="current-group">그룹: -</p>
             </div>
-
-            <div class="m3u-current-channel-bar">
-                <div class="current-channel-meta">
-                    <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
-                    <p id="current-channel-group" class="current-group">그룹: -</p>
-                </div>
-                <div class="current-channel-actions">
-                    <button id="btn-reload-stream" class="m3u-btn m3u-btn-secondary" title="스트림 재연결">
-                        <i class="fa-solid fa-arrows-rotate"></i> 재연결
-                    </button>
-                </div>
+            <div class="current-channel-actions">
+                <button id="btn-reload-stream" class="m3u-btn m3u-btn-secondary" title="스트림 재연결">
+                    <i class="fa-solid fa-arrows-rotate"></i> 재연결
+                </button>
             </div>
-        </main>
-    </div>
-
-    <script src="script.js"></script>
-</body>
-</html>
+        </div>
+    </main>
+</div>

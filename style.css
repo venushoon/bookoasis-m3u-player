@@ -1,21 +1,11 @@
-/* 전역 레이아웃 */
-body, html {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--app-bg-main);
-    color: var(--app-text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    overflow: hidden;
-}
-
 .m3u-container {
     display: flex;
     width: 100%;
-    height: 100vh;
+    height: calc(100vh - 65px);
     box-sizing: border-box;
     background: var(--app-bg-main);
+    color: var(--app-text-primary);
+    overflow: hidden;
 }
 
 /* 좌측 사이드 패널 */
