@@ -19,6 +19,18 @@
     background: var(--app-bg-sidebar);
     border-right: 1px solid var(--app-border);
     box-sizing: border-box;
+    transition: width 0.25s ease, margin-left 0.25s ease, opacity 0.2s ease;
+    flex-shrink: 0;
+}
+
+/* 사이드 패널 숨김(접힘) 스타일 */
+.m3u-sidebar.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    margin-left: -390px;
+    opacity: 0;
+    pointer-events: none;
+    border-right: none;
 }
 
 .m3u-sidebar-header {
@@ -40,7 +52,7 @@
 }
 
 .m3u-action-toolbar .m3u-btn-cyan {
-    flex: 1.2;
+    flex: 1.1;
 }
 
 .m3u-filter-group {
@@ -115,8 +127,8 @@
 }
 
 .m3u-btn-icon {
-    padding: 8px 12px;
-    width: 38px;
+    padding: 8px 10px;
+    min-width: 36px;
 }
 
 .m3u-btn-accent {
@@ -126,6 +138,34 @@
 
 .m3u-btn-accent:hover {
     background: #059669;
+}
+
+/* 플로팅 사이드바 열기 버튼 */
+.m3u-btn-floating-toggle {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(8px);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    transition: all 0.2s ease;
+}
+
+.m3u-btn-floating-toggle:hover {
+    background: rgba(168, 85, 247, 0.9);
+    border-color: #a855f7;
+    transform: translateY(-1px);
 }
 
 /* 상태 정보 바 */
@@ -287,6 +327,7 @@
     flex-direction: column;
     background: #000000;
     height: 100%;
+    min-width: 0;
 }
 
 .m3u-player-wrapper {

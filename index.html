@@ -8,10 +8,13 @@
                     <i class="fa-solid fa-layer-group"></i> ⚙️ 소스 관리
                 </button>
                 <button id="btn-check-health" class="m3u-btn m3u-btn-cyan" title="방송 스트림 가용성 점검">
-                    <i class="fa-solid fa-stethoscope"></i> 상태 점검
+                    <i class="fa-solid fa-stethoscope"></i> 점검
                 </button>
                 <button id="btn-refresh-all" class="m3u-btn m3u-btn-secondary m3u-btn-icon" title="채널 및 EPG 새로고침">
                     <i class="fa-solid fa-rotate-right"></i>
+                </button>
+                <button id="btn-toggle-sidebar" class="m3u-btn m3u-btn-secondary m3u-btn-icon" title="사이드 패널 숨기기">
+                    <i class="fa-solid fa-angles-left"></i>
                 </button>
             </div>
 
@@ -44,6 +47,12 @@
     <!-- 우측 비디오 메인 플레이어 -->
     <main class="m3u-main-player">
         <div class="m3u-player-wrapper">
+            <!-- 사이드바가 닫혔을 때 노출되는 플로팅 열기 버튼 -->
+            <button id="btn-expand-sidebar" class="m3u-btn-floating-toggle" title="채널 목록 열기" style="display: none;">
+                <i class="fa-solid fa-bars"></i>
+                <span>채널 목록</span>
+            </button>
+
             <video id="video-element" class="m3u-video" controls playsinline></video>
             <div id="video-overlay-msg" class="m3u-overlay-msg">재생할 채널을 선택해 주세요.</div>
         </div>

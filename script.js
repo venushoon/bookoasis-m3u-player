@@ -27,6 +27,10 @@
 
     function initM3UPlayer() {
         const container = document.querySelector('.m3u-container');
+        const sidebar = document.querySelector('.m3u-sidebar');
+        const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+        const btnExpandSidebar = document.getElementById('btn-expand-sidebar');
+
         const btnOpenSources = document.getElementById('btn-open-sources');
         const btnCheckHealth = document.getElementById('btn-check-health');
         const btnRefreshAll = document.getElementById('btn-refresh-all');
@@ -60,7 +64,7 @@
         const currentEpgInfo = document.getElementById('current-epg-info');
         const btnReloadStream = document.getElementById('btn-reload-stream');
 
-        if (!btnOpenSources || !videoElement || !container) return;
+        if (!btnOpenSources || !videoElement || !container || !sidebar) return;
 
         let allChannels = window.__ALIVE_CACHE__.channels || [];
         let filteredChannels = [];
@@ -73,6 +77,30 @@
         let epgTimer = null;
         let heartbeatTimer = null;
         let lastVisibleState = true;
+
+        // 사이드바 접기/펼치기 제어
+        function setSidebarCollapsed(collapsed) {
+            if (collapsed) {
+                sidebar.classList.add('collapsed');
+                if (btnExpandSidebar) btnExpandSidebar.style.display = 'inline-flex';
+                localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'true');
+            } else {
+                sidebar.classList.remove('collapsed');
+                if (btnExpandSidebar) btnExpandSidebar.style.display = 'none';
+                localStorage.setItem('bookoasis_m3u_sidebar_collapsed', 'false');
+            }
+        }
+
+        // 초기 사이드바 상태 복원
+        const initialCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
+        setSidebarCollapsed(initialCollapsed);
+
+        if (btnToggleSidebar) {
+            btnToggleSidebar.onclick = () => setSidebarCollapsed(true);
+        }
+        if (btnExpandSidebar) {
+            btnExpandSidebar.onclick = () => setSidebarCollapsed(false);
+        }
 
         function isAutoResumeEnabled() {
             return localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
@@ -774,7 +802,6 @@
             }
         }
 
-        // Hls.js 설정 생성기 (선택된 모드 반영)
         function getHlsConfig(mode) {
             const baseConfig = {
                 enableWorker: true,
@@ -787,7 +814,6 @@
             };
 
             if (mode === 'smooth') {
-                // 부드러운 재생 및 싱크 보정 (버퍼 극대화 & 홀 자동 스킵)
                 return {
                     ...baseConfig,
                     lowLatencyMode: false,
@@ -802,7 +828,6 @@
                     highBufferWatchdogPeriod: 2,
                 };
             } else if (mode === 'low_latency') {
-                // 초저지연 모드 (딜레이 최소화)
                 return {
                     ...baseConfig,
                     lowLatencyMode: true,
@@ -815,7 +840,6 @@
                     nudgeMaxRetry: 5,
                 };
             } else {
-                // 표준 균형 모드
                 return {
                     ...baseConfig,
                     lowLatencyMode: true,
