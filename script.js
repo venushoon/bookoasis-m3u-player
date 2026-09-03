@@ -605,7 +605,7 @@
         async function fetchAndParseM3U(rawUrl, sourceLabel) {
             try {
                 const targetUrl = await resolveProxyUrl(rawUrl);
-                const response = await fetch(targetUrl);
+                const response = await fetch(targetUrl, { credentials: 'include' });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const textData = await response.text();
                 return parseM3U(textData, sourceLabel);
@@ -684,7 +684,7 @@
         async function fetchAndParseEPG(rawUrl) {
             try {
                 const targetUrl = await resolveProxyUrl(rawUrl);
-                const res = await fetch(targetUrl);
+                const res = await fetch(targetUrl, { credentials: 'include' });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const xmlText = await res.text();
                 return parseXMLTV(xmlText);
@@ -842,7 +842,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
                 try {
-                    const resp = await fetch(proxied, { method: 'GET', signal: controller.signal });
+                    const resp = await fetch(proxied, { method: 'GET', signal: controller.signal, credentials: 'include' });
                     return (resp.ok || resp.status === 206);
                 } finally {
                     clearTimeout(timeoutId);
@@ -1032,6 +1032,9 @@
                 levelLoadingMaxRetry: 5,
                 fragLoadingTimeOut: 18000,
                 fragLoadingMaxRetry: 6,
+                xhrSetup: function (xhr) {
+                    xhr.withCredentials = true;
+                },
             };
 
             if (mode === 'smooth') {
