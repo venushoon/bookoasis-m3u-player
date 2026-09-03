@@ -849,7 +849,7 @@
                 }
             }
 
-            const workers = Array(2).fill(null).map(async () => {
+            const workers = Array(5).fill(null).map(async () => {
                 while (queue.length > 0) {
                     const item = queue.shift();
                     channelHealth[item.url] = 'checking';
@@ -858,11 +858,11 @@
 
                     let ok = false;
                     try {
-                        ok = await checkOne(item.url, 8000);
+                        ok = await checkOne(item.url, 25000);
                     } catch (e) {
-                        // 첫 시도 실패(타임아웃/일시적 거부) 시 1회 재시도
+                        // 첫 시도 실패(진짜 타임아웃/일시적 거부) 시 1회 재시도
                         try {
-                            ok = await checkOne(item.url, 8000);
+                            ok = await checkOne(item.url, 25000);
                         } catch (e2) {
                             ok = false;
                         }
@@ -1083,13 +1083,23 @@
 
             if (currentChannelName) currentChannelName.textContent = channel.name;
             if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${channel.group} (${channel.source || '기본'})`;
-            if (videoOverlayMsg) videoOverlayMsg.style.display = 'none';
+            if (videoOverlayMsg) {
+                videoOverlayMsg.textContent = `${channel.name} 연결 중...`;
+                videoOverlayMsg.style.display = 'block';
+            }
 
             updateFavButtons();
             updateCurrentEpgDisplay(channel);
             renderChannelList();
 
             const targetStreamUrl = await resolveStreamUrl(channel.url);
+
+            const hideConnectingOverlay = () => {
+                if (videoOverlayMsg && videoOverlayMsg.style.display !== 'none') {
+                    videoOverlayMsg.style.display = 'none';
+                }
+            };
+            videoElement.addEventListener('playing', hideConnectingOverlay, { once: true });
 
             if (window.Hls && Hls.isSupported()) {
                 stopPlayback();
