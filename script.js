@@ -160,13 +160,48 @@
 
         updateSidebarUI(false);
 
+        // 유휴 3초 자동 숨김 + 호버 시 즉시 표시
+        let idleHideTimer = null;
+
+        function clearIdleHideTimer() {
+            if (idleHideTimer) {
+                clearTimeout(idleHideTimer);
+                idleHideTimer = null;
+            }
+        }
+
+        function scheduleIdleHide() {
+            clearIdleHideTimer();
+            idleHideTimer = setTimeout(() => {
+                if (!container.classList.contains('sidebar-collapsed')) {
+                    container.classList.add('sidebar-collapsed');
+                }
+            }, 3000);
+        }
+
+        function revealSidebarOnHover() {
+            clearIdleHideTimer();
+            if (container.classList.contains('sidebar-collapsed')) {
+                container.classList.remove('sidebar-collapsed');
+            }
+        }
+
+        sidebar.addEventListener('mouseenter', revealSidebarOnHover);
+        sidebar.addEventListener('mouseleave', scheduleIdleHide);
+        hotspot.addEventListener('mouseenter', revealSidebarOnHover);
+        btnSidebarToggle.addEventListener('mouseenter', revealSidebarOnHover);
+
+        if (!isSidebarCollapsed) scheduleIdleHide();
+
         function toggleSidebar(e) {
             if (e) {
                 e.preventDefault();
                 e.stopPropagation();
             }
+            clearIdleHideTimer();
             isSidebarCollapsed = !isSidebarCollapsed;
             updateSidebarUI(true);
+            if (!isSidebarCollapsed) scheduleIdleHide();
         }
 
         btnSidebarToggle.onclick = toggleSidebar;
@@ -251,6 +286,7 @@
                 clearTimeout(autoHideTimer);
                 autoHideTimer = null;
             }
+            clearIdleHideTimer();
             window.removeEventListener('popstate', handleNavChange);
             window.removeEventListener('hashchange', handleNavChange);
             window.removeEventListener('beforeunload', cleanupAll);
@@ -260,6 +296,7 @@
 
         function onTabRestored() {
             updateSidebarUI(false);
+            if (!isSidebarCollapsed) scheduleIdleHide();
 
             if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
                 refreshAllSources(false);

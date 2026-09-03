@@ -147,6 +147,7 @@
 
 .m3u-filter-group {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
 }
 
@@ -159,18 +160,20 @@
     font-size: 0.88rem;
     outline: none;
     box-sizing: border-box;
+    min-width: 0;
 }
 
 .m3u-input:focus, .m3u-select:focus {
     border-color: var(--app-accent);
 }
 
-.m3u-filter-group .m3u-select {
-    flex: 1;
+.m3u-filter-group #m3u-source-select,
+.m3u-filter-group #m3u-group-select {
+    flex: 1 1 calc(50% - 3px);
 }
 
-.m3u-filter-group .m3u-input {
-    flex: 1.3;
+.m3u-filter-group #m3u-search-input {
+    flex: 1 1 100%;
 }
 
 .m3u-btn {
