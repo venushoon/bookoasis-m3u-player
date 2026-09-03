@@ -830,27 +830,44 @@
             healthStatusBadge.textContent = '점검 중 (0%)';
             btnCheckHealth.disabled = true;
 
-            const total = filteredChannels.length;
+            // 이미 재생 중인 채널은 online이 자명하므로 점검 대상에서 제외 (동시접속 제한 회피)
+            const queue = filteredChannels.filter(c => !currentChannel || c.url !== currentChannel.url);
+            if (currentChannel) channelHealth[currentChannel.url] = 'online';
+
+            const total = queue.length;
             let finished = 0;
 
-            const queue = [...filteredChannels];
-            const workers = Array(4).fill(null).map(async () => {
+            async function checkOne(url, timeoutMs) {
+                const proxied = await resolveStreamUrl(url);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+                try {
+                    const resp = await fetch(proxied, { method: 'GET', signal: controller.signal });
+                    return (resp.ok || resp.status === 206);
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+            }
+
+            const workers = Array(2).fill(null).map(async () => {
                 while (queue.length > 0) {
                     const item = queue.shift();
                     channelHealth[item.url] = 'checking';
                     window.__ALIVE_CACHE__.channelHealth = channelHealth;
                     renderChannelList();
 
+                    let ok = false;
                     try {
-                        const proxied = await resolveStreamUrl(item.url);
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 4000);
-                        const resp = await fetch(proxied, { method: 'GET', signal: controller.signal });
-                        clearTimeout(timeoutId);
-                        channelHealth[item.url] = (resp.ok || resp.status === 206) ? 'online' : 'offline';
+                        ok = await checkOne(item.url, 8000);
                     } catch (e) {
-                        channelHealth[item.url] = 'offline';
+                        // 첫 시도 실패(타임아웃/일시적 거부) 시 1회 재시도
+                        try {
+                            ok = await checkOne(item.url, 8000);
+                        } catch (e2) {
+                            ok = false;
+                        }
                     }
+                    channelHealth[item.url] = ok ? 'online' : 'offline';
 
                     finished++;
                     window.__ALIVE_CACHE__.channelHealth = channelHealth;
