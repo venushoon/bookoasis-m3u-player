@@ -838,15 +838,26 @@
             let finished = 0;
 
             async function checkOne(url, timeoutMs) {
-                const proxied = await resolveStreamUrl(url);
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-                try {
-                    const resp = await fetch(proxied, { method: 'GET', signal: controller.signal });
-                    return (resp.ok || resp.status === 206);
-                } finally {
-                    clearTimeout(timeoutId);
+                async function attempt(targetUrl) {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+                    try {
+                        const resp = await fetch(targetUrl, { method: 'GET', signal: controller.signal });
+                        return (resp.ok || resp.status === 206);
+                    } finally {
+                        clearTimeout(timeoutId);
+                    }
                 }
+
+                try {
+                    // 재생 로직과 동일하게 원본 URL을 먼저 검사
+                    const ok = await attempt(url);
+                    if (ok) return true;
+                } catch (e) {
+                    // 원본 실패 시 프록시로 폴백 검사
+                }
+                const proxied = await resolveStreamUrl(url);
+                return attempt(proxied);
             }
 
             const workers = Array(5).fill(null).map(async () => {
@@ -1095,6 +1106,11 @@
             const hideConnectingOverlay = () => {
                 if (videoOverlayMsg && videoOverlayMsg.style.display !== 'none') {
                     videoOverlayMsg.style.display = 'none';
+                }
+                if (channelHealth[channel.url] !== 'online') {
+                    channelHealth[channel.url] = 'online';
+                    window.__ALIVE_CACHE__.channelHealth = channelHealth;
+                    renderChannelList();
                 }
             };
             videoElement.addEventListener('playing', hideConnectingOverlay, { once: true });
