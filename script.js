@@ -1095,8 +1095,6 @@
             updateCurrentEpgDisplay(channel);
             renderChannelList();
 
-            const targetStreamUrl = await resolveStreamUrl(channel.url);
-
             const hideConnectingOverlay = () => {
                 if (videoOverlayMsg && videoOverlayMsg.style.display !== 'none') {
                     videoOverlayMsg.style.display = 'none';
@@ -1104,56 +1102,79 @@
             };
             videoElement.addEventListener('playing', hideConnectingOverlay, { once: true });
 
-            if (window.Hls && Hls.isSupported()) {
-                stopPlayback();
+            let usingProxyFallback = false;
 
-                const playbackMode = localStorage.getItem(LS.playbackMode) || 'smooth';
-                const hlsConfig = getHlsConfig(playbackMode);
+            function startHlsPlayback(streamUrl) {
+                if (window.Hls && Hls.isSupported()) {
+                    stopPlayback();
 
-                hls = new Hls(hlsConfig);
-                hls.loadSource(targetStreamUrl);
-                hls.attachMedia(videoElement);
+                    const playbackMode = localStorage.getItem(LS.playbackMode) || 'smooth';
+                    const hlsConfig = getHlsConfig(playbackMode);
 
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    if (isElementVisible(container) || isPipActive()) {
-                        videoElement.play().catch(() => {});
-                    } else {
-                        stopPlayback();
-                    }
-                });
+                    hls = new Hls(hlsConfig);
+                    hls.loadSource(streamUrl);
+                    hls.attachMedia(videoElement);
 
-                hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal && (isElementVisible(container) || isPipActive())) {
-                        switch (data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
-                                hls.startLoad();
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                console.warn('[ALIVE] 미디어 버퍼 스톨 복구 시도...');
-                                hls.recoverMediaError();
-                                break;
-                            default:
-                                console.error('[ALIVE] 스트림 fatal 오류:', data);
-                                stopPlayback();
-                                if (videoOverlayMsg) {
-                                    videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
-                                    videoOverlayMsg.style.display = 'block';
-                                }
-                                break;
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        if (isElementVisible(container) || isPipActive()) {
+                            videoElement.play().catch(() => {});
+                        } else {
+                            stopPlayback();
                         }
-                    }
-                });
-            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                videoElement.src = targetStreamUrl;
-                videoElement.addEventListener('loadedmetadata', () => {
-                    if (isElementVisible(container) || isPipActive()) {
-                        videoElement.play().catch(() => {});
-                    } else {
-                        stopPlayback();
-                    }
-                });
+                    });
+
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        if (currentChannel !== channel) return;
+                        if (data.fatal && (isElementVisible(container) || isPipActive())) {
+                            const isEarlyLoadError = [
+                                Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
+                                Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
+                                Hls.ErrorDetails.LEVEL_LOAD_ERROR,
+                                Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT,
+                            ].includes(data.details);
+
+                            switch (data.type) {
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    if (isEarlyLoadError && !usingProxyFallback) {
+                                        console.warn('[ALIVE] 원본 URL 재생 실패, 프록시 경유로 재시도...');
+                                        usingProxyFallback = true;
+                                        resolveStreamUrl(channel.url).then((proxiedUrl) => {
+                                            if (currentChannel === channel) startHlsPlayback(proxiedUrl);
+                                        });
+                                        return;
+                                    }
+                                    console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
+                                    hls.startLoad();
+                                    break;
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    console.warn('[ALIVE] 미디어 버퍼 스톨 복구 시도...');
+                                    hls.recoverMediaError();
+                                    break;
+                                default:
+                                    console.error('[ALIVE] 스트림 fatal 오류:', data);
+                                    stopPlayback();
+                                    if (videoOverlayMsg) {
+                                        videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
+                                        videoOverlayMsg.style.display = 'block';
+                                    }
+                                    break;
+                            }
+                        }
+                    });
+                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoElement.src = streamUrl;
+                    videoElement.addEventListener('loadedmetadata', () => {
+                        if (isElementVisible(container) || isPipActive()) {
+                            videoElement.play().catch(() => {});
+                        } else {
+                            stopPlayback();
+                        }
+                    }, { once: true });
+                }
             }
+
+            // 원본 채널 URL(무프록시)로 먼저 시도 — CORS를 여는 CDN이면 이게 더 빠르고 안정적
+            startHlsPlayback(channel.url);
         }
 
         videoElement.addEventListener('waiting', () => {
