@@ -25,7 +25,44 @@
         document.head.appendChild(script);
     }
 
+    const LS_PREFIX = 'bookoasis_m3u_player_';
+    const LS = {
+        url1: LS_PREFIX + 'url1',
+        url2: LS_PREFIX + 'url2',
+        epgUrl1: LS_PREFIX + 'epg_url1',
+        epgUrl2: LS_PREFIX + 'epg_url2',
+        epgInterval: LS_PREFIX + 'epg_interval',
+        favorites: LS_PREFIX + 'favorites',
+        sidebarCollapsed: LS_PREFIX + 'sidebar_collapsed',
+        playbackMode: LS_PREFIX + 'playback_mode',
+        autoResume: LS_PREFIX + 'autoresume',
+        lastUrl: LS_PREFIX + 'last_url',
+    };
+
+    function migrateLegacyStorageKeys() {
+        const legacyMap = {
+            'hoon_m3u_url1': LS.url1,
+            'hoon_m3u_url2': LS.url2,
+            'hoon_epg_url1': LS.epgUrl1,
+            'hoon_epg_url2': LS.epgUrl2,
+            'hoon_epg_interval': LS.epgInterval,
+            'hoon_m3u_favorites': LS.favorites,
+            'bookoasis_m3u_sidebar_collapsed': LS.sidebarCollapsed,
+            'bookoasis_m3u_playback_mode': LS.playbackMode,
+            'bookoasis_m3u_autoresume': LS.autoResume,
+            'bookoasis_m3u_last_url': LS.lastUrl,
+        };
+        Object.entries(legacyMap).forEach(([oldKey, newKey]) => {
+            const val = localStorage.getItem(oldKey);
+            if (val !== null && localStorage.getItem(newKey) === null) {
+                localStorage.setItem(newKey, val);
+            }
+            localStorage.removeItem(oldKey);
+        });
+    }
+
     function initM3UPlayer() {
+        migrateLegacyStorageKeys();
         const container = document.querySelector('.m3u-container');
         const sidebar = document.getElementById('m3u-sidebar');
         const hotspot = document.getElementById('m3u-sidebar-hotspot');
@@ -76,12 +113,11 @@
         let currentChannel = window.__ALIVE_CACHE__.lastChannel || null;
         let hls = null;
         let epgTimer = null;
-        let heartbeatTimer = null;
         let autoHideTimer = null;
         let lastVisibleState = true;
 
         // 사이드바 상태 제어
-        let isSidebarCollapsed = localStorage.getItem('bookoasis_m3u_sidebar_collapsed') === 'true';
+        let isSidebarCollapsed = localStorage.getItem(LS.sidebarCollapsed) === 'true';
 
         function updateSidebarUI(triggerTempShow = false) {
             if (autoHideTimer) {
@@ -106,7 +142,7 @@
                 btnSidebarToggle.classList.remove('show-temporarily');
                 btnSidebarToggle.setAttribute('title', '채널 목록 접기');
             }
-            localStorage.setItem('bookoasis_m3u_sidebar_collapsed', isSidebarCollapsed ? 'true' : 'false');
+            localStorage.setItem(LS.sidebarCollapsed, isSidebarCollapsed ? 'true' : 'false');
         }
 
         updateSidebarUI(false);
@@ -132,7 +168,7 @@
         });
 
         function isAutoResumeEnabled() {
-            return localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
+            return localStorage.getItem(LS.autoResume) === 'true';
         }
 
         function isPipActive() {
@@ -196,10 +232,8 @@
                 clearInterval(epgTimer);
                 epgTimer = null;
             }
-            if (heartbeatTimer) {
-                clearInterval(heartbeatTimer);
-                heartbeatTimer = null;
-            }
+            if (visibilityObserver) visibilityObserver.disconnect();
+            if (mutationObserver) mutationObserver.disconnect();
             if (autoHideTimer) {
                 clearTimeout(autoHideTimer);
                 autoHideTimer = null;
@@ -225,7 +259,7 @@
                     if (currentChannel) {
                         playChannel(currentChannel);
                     } else {
-                        const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
+                        const lastUrl = localStorage.getItem(LS.lastUrl);
                         if (lastUrl) {
                             const found = allChannels.find(c => c.url === lastUrl);
                             if (found) playChannel(found);
@@ -237,7 +271,7 @@
             }
         }
 
-        heartbeatTimer = setInterval(() => {
+        function handleVisibilityChange() {
             const currentlyVisible = isElementVisible(container);
 
             if (!lastVisibleState && currentlyVisible) {
@@ -251,7 +285,24 @@
                     }
                 }
             }
-        }, 200);
+        }
+
+        // IntersectionObserver: 뷰포트 진입/이탈 감지 (display:none 전환은 감지 못함)
+        const visibilityObserver = new IntersectionObserver(() => {
+            handleVisibilityChange();
+        }, { threshold: 0.01 });
+        visibilityObserver.observe(container);
+
+        // MutationObserver: display:none 등 style/class 전환 감지 (부모 트리 포함)
+        const mutationObserver = new MutationObserver(() => {
+            handleVisibilityChange();
+        });
+        let mutationTarget = container.parentElement || container;
+        mutationObserver.observe(mutationTarget, {
+            attributes: true,
+            attributeFilter: ['style', 'class'],
+            subtree: true,
+        });
 
         videoElement.addEventListener('leavepictureinpicture', () => {
             setTimeout(() => {
@@ -308,7 +359,7 @@
 
         function loadFavorites() {
             try {
-                favorites = JSON.parse(localStorage.getItem('hoon_m3u_favorites') || '[]');
+                favorites = JSON.parse(localStorage.getItem(LS.favorites) || '[]');
             } catch (e) {
                 favorites = [];
             }
@@ -321,7 +372,7 @@
             } else {
                 favorites.push(channel.name);
             }
-            localStorage.setItem('hoon_m3u_favorites', JSON.stringify(favorites));
+            localStorage.setItem(LS.favorites, JSON.stringify(favorites));
             updateFavButtons();
             if (groupSelect.value === 'FAVORITES') {
                 applyFilter();
@@ -346,13 +397,13 @@
         };
 
         function openModal() {
-            cfgM3uUrl1.value = localStorage.getItem('hoon_m3u_url1') || '';
-            cfgM3uUrl2.value = localStorage.getItem('hoon_m3u_url2') || '';
-            cfgEpgUrl1.value = localStorage.getItem('hoon_epg_url1') || '';
-            cfgEpgUrl2.value = localStorage.getItem('hoon_epg_url2') || '';
-            cfgEpgInterval.value = localStorage.getItem('hoon_epg_interval') || '60';
-            cfgPlaybackMode.value = localStorage.getItem('bookoasis_m3u_playback_mode') || 'smooth';
-            cfgAutoResume.checked = localStorage.getItem('bookoasis_m3u_autoresume') === 'true';
+            cfgM3uUrl1.value = localStorage.getItem(LS.url1) || '';
+            cfgM3uUrl2.value = localStorage.getItem(LS.url2) || '';
+            cfgEpgUrl1.value = localStorage.getItem(LS.epgUrl1) || '';
+            cfgEpgUrl2.value = localStorage.getItem(LS.epgUrl2) || '';
+            cfgEpgInterval.value = localStorage.getItem(LS.epgInterval) || '60';
+            cfgPlaybackMode.value = localStorage.getItem(LS.playbackMode) || 'smooth';
+            cfgAutoResume.checked = localStorage.getItem(LS.autoResume) === 'true';
             modalOverlay.style.display = 'flex';
         }
 
@@ -365,13 +416,13 @@
         btnModalCancel.onclick = closeModal;
 
         btnModalSave.onclick = () => {
-            localStorage.setItem('hoon_m3u_url1', cfgM3uUrl1.value.trim());
-            localStorage.setItem('hoon_m3u_url2', cfgM3uUrl2.value.trim());
-            localStorage.setItem('hoon_epg_url1', cfgEpgUrl1.value.trim());
-            localStorage.setItem('hoon_epg_url2', cfgEpgUrl2.value.trim());
-            localStorage.setItem('hoon_epg_interval', cfgEpgInterval.value);
-            localStorage.setItem('bookoasis_m3u_playback_mode', cfgPlaybackMode.value);
-            localStorage.setItem('bookoasis_m3u_autoresume', cfgAutoResume.checked ? 'true' : 'false');
+            localStorage.setItem(LS.url1, cfgM3uUrl1.value.trim());
+            localStorage.setItem(LS.url2, cfgM3uUrl2.value.trim());
+            localStorage.setItem(LS.epgUrl1, cfgEpgUrl1.value.trim());
+            localStorage.setItem(LS.epgUrl2, cfgEpgUrl2.value.trim());
+            localStorage.setItem(LS.epgInterval, cfgEpgInterval.value);
+            localStorage.setItem(LS.playbackMode, cfgPlaybackMode.value);
+            localStorage.setItem(LS.autoResume, cfgAutoResume.checked ? 'true' : 'false');
             closeModal();
             refreshAllSources(true);
         };
@@ -397,8 +448,8 @@
             showLoading(true);
             allChannels = [];
             channelHealth = {};
-            const url1 = localStorage.getItem('hoon_m3u_url1') || '';
-            const url2 = localStorage.getItem('hoon_m3u_url2') || '';
+            const url1 = localStorage.getItem(LS.url1) || '';
+            const url2 = localStorage.getItem(LS.url2) || '';
 
             try {
                 const p1 = url1 ? fetchAndParseM3U(url1, '소스1') : Promise.resolve([]);
@@ -426,7 +477,7 @@
                 applyFilter();
 
                 if (isAutoResumeEnabled()) {
-                    const lastUrl = localStorage.getItem('bookoasis_m3u_last_url');
+                    const lastUrl = localStorage.getItem(LS.lastUrl);
                     if (lastUrl && !currentChannel) {
                         const found = allChannels.find(c => c.url === lastUrl);
                         if (found) playChannel(found);
@@ -455,6 +506,10 @@
                 return parseM3U(textData, sourceLabel);
             } catch (e) {
                 console.warn(`[ALIVE Player] ${sourceLabel} 로드 실패:`, e);
+                if (videoOverlayMsg) {
+                    videoOverlayMsg.textContent = `${sourceLabel} 로드 실패 (${e.message}). 주소를 확인해 주세요.`;
+                    videoOverlayMsg.style.display = 'block';
+                }
                 return [];
             }
         }
@@ -511,8 +566,8 @@
         }
 
         async function loadAllEPGs() {
-            const epg1 = localStorage.getItem('hoon_epg_url1') || '';
-            const epg2 = localStorage.getItem('hoon_epg_url2') || '';
+            const epg1 = localStorage.getItem(LS.epgUrl1) || '';
+            const epg2 = localStorage.getItem(LS.epgUrl2) || '';
 
             if (!epg1 && !epg2) {
                 updateEpgBadgeStatus();
@@ -670,7 +725,7 @@
 
         function setupEpgInterval() {
             if (epgTimer) clearInterval(epgTimer);
-            const mins = parseInt(localStorage.getItem('hoon_epg_interval') || '60', 10);
+            const mins = parseInt(localStorage.getItem(LS.epgInterval) || '60', 10);
             if (mins > 0) {
                 epgTimer = setInterval(() => {
                     loadAllEPGs();
@@ -830,7 +885,10 @@
             if (currentEpgInfo) {
                 if (nowProg) {
                     const timeFormat = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-                    currentEpgInfo.innerHTML = `<strong>현재 방송:</strong> ${nowProg.title} (${timeFormat(nowProg.start)} ~ ${timeFormat(nowProg.stop)})`;
+                    currentEpgInfo.textContent = '';
+                    const strong = document.createElement('strong');
+                    strong.textContent = '현재 방송:';
+                    currentEpgInfo.append(strong, ` ${nowProg.title} (${timeFormat(nowProg.start)} ~ ${timeFormat(nowProg.stop)})`);
                 } else {
                     currentEpgInfo.textContent = '편성 정보 없음';
                 }
@@ -894,7 +952,7 @@
 
             currentChannel = channel;
             window.__ALIVE_CACHE__.lastChannel = channel;
-            localStorage.setItem('bookoasis_m3u_last_url', channel.url);
+            localStorage.setItem(LS.lastUrl, channel.url);
 
             if (currentChannelName) currentChannelName.textContent = channel.name;
             if (currentChannelGroup) currentChannelGroup.textContent = `그룹: ${channel.group} (${channel.source || '기본'})`;
@@ -909,7 +967,7 @@
             if (window.Hls && Hls.isSupported()) {
                 stopPlayback();
 
-                const playbackMode = localStorage.getItem('bookoasis_m3u_playback_mode') || 'smooth';
+                const playbackMode = localStorage.getItem(LS.playbackMode) || 'smooth';
                 const hlsConfig = getHlsConfig(playbackMode);
 
                 hls = new Hls(hlsConfig);
