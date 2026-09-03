@@ -569,6 +569,47 @@
     font-weight: 600;
 }
 
+.m3u-source-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.m3u-source-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.m3u-source-row .m3u-source-name {
+    flex: 0 0 110px;
+    min-width: 0;
+}
+
+.m3u-source-row .m3u-source-url {
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-remove-source {
+    background: none;
+    border: none;
+    color: var(--app-text-muted);
+    cursor: pointer;
+    padding: 6px;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.btn-remove-source:hover {
+    color: #ef4444;
+}
+
+.m3u-btn-add-source {
+    align-self: flex-start;
+}
+
 .m3u-checkbox-wrapper {
     display: flex;
     flex-direction: column;

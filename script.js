@@ -29,6 +29,7 @@
     const LS = {
         url1: LS_PREFIX + 'url1',
         url2: LS_PREFIX + 'url2',
+        sources: LS_PREFIX + 'sources',
         epgUrl1: LS_PREFIX + 'epg_url1',
         epgUrl2: LS_PREFIX + 'epg_url2',
         epgInterval: LS_PREFIX + 'epg_interval',
@@ -59,6 +60,18 @@
             }
             localStorage.removeItem(oldKey);
         });
+
+        // url1/url2(고정 2슬롯) → sources(가변 배열) 이관
+        if (localStorage.getItem(LS.sources) === null) {
+            const legacyUrl1 = localStorage.getItem(LS.url1) || '';
+            const legacyUrl2 = localStorage.getItem(LS.url2) || '';
+            const migratedSources = [];
+            if (legacyUrl1) migratedSources.push({ id: 'src_' + Date.now() + '_1', name: '소스1', url: legacyUrl1 });
+            if (legacyUrl2) migratedSources.push({ id: 'src_' + Date.now() + '_2', name: '소스2', url: legacyUrl2 });
+            localStorage.setItem(LS.sources, JSON.stringify(migratedSources));
+            localStorage.removeItem(LS.url1);
+            localStorage.removeItem(LS.url2);
+        }
     }
 
     function initM3UPlayer() {
@@ -78,19 +91,19 @@
         const btnModalCancel = document.getElementById('btn-modal-cancel');
         const btnModalSave = document.getElementById('btn-modal-save');
 
-        const cfgM3uUrl1 = document.getElementById('cfg-m3u-url1');
-        const cfgM3uUrl2 = document.getElementById('cfg-m3u-url2');
+        const btnAddSource = document.getElementById('btn-add-source');
+        const sourceListEl = document.getElementById('m3u-source-list');
         const cfgEpgUrl1 = document.getElementById('cfg-epg-url1');
         const cfgEpgUrl2 = document.getElementById('cfg-epg-url2');
         const cfgEpgInterval = document.getElementById('cfg-epg-interval');
         const cfgPlaybackMode = document.getElementById('cfg-playback-mode');
         const cfgAutoResume = document.getElementById('cfg-auto-resume');
 
+        const sourceSelect = document.getElementById('m3u-source-select');
         const groupSelect = document.getElementById('m3u-group-select');
         const searchInput = document.getElementById('m3u-search-input');
         const channelList = document.getElementById('m3u-channel-list');
         const channelCountBadge = document.getElementById('channel-count-badge');
-        const epgStatusBadge = document.getElementById('epg-status-badge');
         const healthStatusBadge = document.getElementById('health-status-badge');
         const loadingSpinner = document.getElementById('loading-spinner');
 
@@ -251,9 +264,8 @@
             if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
                 refreshAllSources(false);
             } else {
-                updateGroupSelect();
+                updateFilterSelects();
                 applyFilter();
-                updateEpgBadgeStatus();
 
                 if (isAutoResumeEnabled()) {
                     if (currentChannel) {
@@ -396,9 +408,68 @@
             if (currentChannel) toggleFavorite(currentChannel);
         };
 
+        function getSources() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(LS.sources) || '[]');
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function renderSourceRows(sources) {
+            if (!sourceListEl) return;
+            sourceListEl.innerHTML = '';
+            sources.forEach((src) => {
+                const row = document.createElement('div');
+                row.className = 'm3u-source-row';
+                row.dataset.sourceId = src.id;
+
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.className = 'm3u-input m3u-source-name';
+                nameInput.placeholder = '소스명';
+                nameInput.value = src.name || '';
+
+                const urlInput = document.createElement('input');
+                urlInput.type = 'text';
+                urlInput.className = 'm3u-input m3u-source-url';
+                urlInput.placeholder = 'https://.../playlist.m3u';
+                urlInput.value = src.url || '';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'btn-remove-source';
+                removeBtn.title = '소스 삭제';
+                removeBtn.innerHTML = '<i class="fa-solid fa-trash fas fa-trash"></i>';
+                removeBtn.onclick = () => row.remove();
+
+                row.appendChild(nameInput);
+                row.appendChild(urlInput);
+                row.appendChild(removeBtn);
+                sourceListEl.appendChild(row);
+            });
+        }
+
+        function addSourceRow(name = '', url = '') {
+            const sources = readSourceRowsFromDOM();
+            sources.push({ id: 'src_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: name || `소스${sources.length + 1}`, url });
+            renderSourceRows(sources);
+        }
+
+        function readSourceRowsFromDOM() {
+            if (!sourceListEl) return [];
+            return Array.from(sourceListEl.querySelectorAll('.m3u-source-row')).map((row) => ({
+                id: row.dataset.sourceId,
+                name: row.querySelector('.m3u-source-name').value.trim() || '이름없음',
+                url: row.querySelector('.m3u-source-url').value.trim(),
+            })).filter((s) => s.url);
+        }
+
+        if (btnAddSource) btnAddSource.onclick = () => addSourceRow();
+
         function openModal() {
-            cfgM3uUrl1.value = localStorage.getItem(LS.url1) || '';
-            cfgM3uUrl2.value = localStorage.getItem(LS.url2) || '';
+            renderSourceRows(getSources());
             cfgEpgUrl1.value = localStorage.getItem(LS.epgUrl1) || '';
             cfgEpgUrl2.value = localStorage.getItem(LS.epgUrl2) || '';
             cfgEpgInterval.value = localStorage.getItem(LS.epgInterval) || '60';
@@ -416,8 +487,7 @@
         btnModalCancel.onclick = closeModal;
 
         btnModalSave.onclick = () => {
-            localStorage.setItem(LS.url1, cfgM3uUrl1.value.trim());
-            localStorage.setItem(LS.url2, cfgM3uUrl2.value.trim());
+            localStorage.setItem(LS.sources, JSON.stringify(readSourceRowsFromDOM()));
             localStorage.setItem(LS.epgUrl1, cfgEpgUrl1.value.trim());
             localStorage.setItem(LS.epgUrl2, cfgEpgUrl2.value.trim());
             localStorage.setItem(LS.epgInterval, cfgEpgInterval.value);
@@ -433,9 +503,8 @@
                 epgData1 = window.__ALIVE_CACHE__.epgData1;
                 epgData2 = window.__ALIVE_CACHE__.epgData2;
                 channelHealth = window.__ALIVE_CACHE__.channelHealth;
-                updateGroupSelect();
+                updateFilterSelects();
                 applyFilter();
-                updateEpgBadgeStatus();
                 
                 if (isAutoResumeEnabled() && currentChannel) {
                     playChannel(currentChannel);
@@ -448,15 +517,14 @@
             showLoading(true);
             allChannels = [];
             channelHealth = {};
-            const url1 = localStorage.getItem(LS.url1) || '';
-            const url2 = localStorage.getItem(LS.url2) || '';
+            const sources = getSources();
 
             try {
-                const p1 = url1 ? fetchAndParseM3U(url1, '소스1') : Promise.resolve([]);
-                const p2 = url2 ? fetchAndParseM3U(url2, '소스2') : Promise.resolve([]);
-                const [res1, res2] = await Promise.all([p1, p2]);
+                const results = await Promise.all(
+                    sources.map((src) => src.url ? fetchAndParseM3U(src.url, src.name || '소스') : Promise.resolve([]))
+                );
 
-                allChannels = [...res1, ...res2];
+                allChannels = results.flat();
                 window.__ALIVE_CACHE__.channels = allChannels;
                 window.__ALIVE_CACHE__.loaded = true;
 
@@ -473,7 +541,7 @@
                     }
                 }
 
-                updateGroupSelect();
+                updateFilterSelects();
                 applyFilter();
 
                 if (isAutoResumeEnabled()) {
@@ -554,27 +622,14 @@
             return channels;
         }
 
-        function updateEpgBadgeStatus() {
-            const total = Object.values(epgData1).reduce((s, a) => s + a.length, 0) + Object.values(epgData2).reduce((s, a) => s + a.length, 0);
-            if (total > 0) {
-                epgStatusBadge.textContent = `EPG 연동됨 (${total}개)`;
-                epgStatusBadge.classList.add('active');
-            } else {
-                epgStatusBadge.textContent = 'EPG 미등록';
-                epgStatusBadge.classList.remove('active');
-            }
-        }
-
         async function loadAllEPGs() {
             const epg1 = localStorage.getItem(LS.epgUrl1) || '';
             const epg2 = localStorage.getItem(LS.epgUrl2) || '';
 
             if (!epg1 && !epg2) {
-                updateEpgBadgeStatus();
                 return;
             }
 
-            epgStatusBadge.textContent = 'EPG 갱신 중...';
             const p1 = epg1 ? fetchAndParseEPG(epg1) : Promise.resolve({});
             const p2 = epg2 ? fetchAndParseEPG(epg2) : Promise.resolve({});
 
@@ -585,7 +640,6 @@
             window.__ALIVE_CACHE__.epgData1 = epgData1;
             window.__ALIVE_CACHE__.epgData2 = epgData2;
 
-            updateEpgBadgeStatus();
             renderChannelList();
             if (currentChannel) updateCurrentEpgDisplay(currentChannel);
         }
@@ -774,16 +828,16 @@
             btnCheckHealth.disabled = false;
         };
 
-        function updateGroupSelect() {
+        function updateFilterSelects() {
             if (!groupSelect) return;
-            const cur = groupSelect.value;
+            const curGroup = groupSelect.value;
             const groups = Array.from(new Set(allChannels.map(c => c.group || '기타'))).sort();
-            
+
             groupSelect.innerHTML = `
                 <option value="ALL">전체 그룹</option>
                 <option value="FAVORITES">⭐ 즐겨찾기 (${favorites.length})</option>
             `;
-            
+
             groups.forEach(group => {
                 const option = document.createElement('option');
                 option.value = group;
@@ -791,14 +845,32 @@
                 groupSelect.appendChild(option);
             });
 
-            if (cur && (groups.includes(cur) || cur === 'FAVORITES')) {
-                groupSelect.value = cur;
+            if (curGroup && (groups.includes(curGroup) || curGroup === 'FAVORITES')) {
+                groupSelect.value = curGroup;
+            }
+
+            if (sourceSelect) {
+                const curSource = sourceSelect.value;
+                const sourceNames = Array.from(new Set(allChannels.map(c => c.source || '기본'))).sort();
+
+                sourceSelect.innerHTML = `<option value="ALL">전체 소스</option>`;
+                sourceNames.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    sourceSelect.appendChild(option);
+                });
+
+                if (curSource && sourceNames.includes(curSource)) {
+                    sourceSelect.value = curSource;
+                }
             }
         }
 
         function applyFilter() {
             if (!groupSelect || !searchInput) return;
             const selectedGroup = groupSelect.value;
+            const selectedSource = sourceSelect ? sourceSelect.value : 'ALL';
             const searchQuery = searchInput.value.toLowerCase().trim();
 
             filteredChannels = allChannels.filter(c => {
@@ -808,8 +880,9 @@
                 } else if (selectedGroup !== 'ALL') {
                     matchGroup = (c.group === selectedGroup);
                 }
+                const matchSource = selectedSource === 'ALL' || (c.source || '기본') === selectedSource;
                 const matchSearch = !searchQuery || (c.name && c.name.toLowerCase().includes(searchQuery));
-                return matchGroup && matchSearch;
+                return matchGroup && matchSource && matchSearch;
             });
 
             channelCountBadge.textContent = `채널 ${filteredChannels.length}개`;
@@ -835,7 +908,6 @@
                     e.stopPropagation();
                     toggleFavorite(channel);
                 };
-                li.appendChild(favBtn);
 
                 const healthDot = document.createElement('span');
                 const state = channelHealth[channel.url] || 'none';
@@ -875,6 +947,7 @@
                 }
 
                 li.appendChild(details);
+                li.appendChild(favBtn);
                 li.onclick = () => playChannel(channel);
                 channelList.appendChild(li);
             });
@@ -1029,6 +1102,7 @@
         }
 
         groupSelect.onchange = applyFilter;
+        if (sourceSelect) sourceSelect.onchange = applyFilter;
         searchInput.oninput = applyFilter;
 
         function showLoading(isLoading) {

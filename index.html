@@ -20,6 +20,9 @@
 
             <!-- 채널 필터 및 검색창 -->
             <div class="m3u-filter-group">
+                <select id="m3u-source-select" class="m3u-select">
+                    <option value="ALL">전체 소스</option>
+                </select>
                 <select id="m3u-group-select" class="m3u-select">
                     <option value="ALL">전체 그룹</option>
                     <option value="FAVORITES">⭐ 즐겨찾기</option>
@@ -31,7 +34,6 @@
         <!-- 상태 정보 표시 바 -->
         <div class="m3u-channel-info-bar">
             <span id="channel-count-badge">채널 0개</span>
-            <span id="epg-status-badge" class="m3u-badge">EPG 대기</span>
             <span id="health-status-badge" class="m3u-badge" style="display: none;">점검 중...</span>
             <span id="loading-spinner" class="m3u-spinner" style="display: none;">
                 <i class="fa-solid fa-circle-notch fas fa-spinner fa-spin"></i>
@@ -93,14 +95,12 @@
                 <!-- 1. 플레이리스트 관리 -->
                 <div class="m3u-modal-section">
                     <h4 class="m3u-modal-section-title"><i class="fa-solid fa-list-ul fas fa-list-ul"></i> 플레이리스트 관리 (M3U)</h4>
-                    <div class="m3u-form-group">
-                        <label>주소 입력창 1 (기본)</label>
-                        <input type="text" id="cfg-m3u-url1" class="m3u-input" placeholder="https://.../playlist1.m3u">
+                    <div id="m3u-source-list" class="m3u-source-list">
+                        <!-- 소스 행 동적 생성 -->
                     </div>
-                    <div class="m3u-form-group">
-                        <label>주소 입력창 2 (보조/추가)</label>
-                        <input type="text" id="cfg-m3u-url2" class="m3u-input" placeholder="https://.../playlist2.m3u">
-                    </div>
+                    <button id="btn-add-source" type="button" class="m3u-btn m3u-btn-secondary m3u-btn-add-source">
+                        <i class="fa-solid fa-plus fas fa-plus"></i> 소스 추가
+                    </button>
                 </div>
 
                 <!-- 2. EPG 설정 -->
