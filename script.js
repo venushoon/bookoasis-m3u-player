@@ -135,8 +135,20 @@
             }
         }
         adjustContainerHeight();
+        // 호스트 앱 상단 UI가 스크립트 실행 시점 이후에 비동기로 그려지거나
+        // 크기가 바뀌는 경우를 대비해 초기 진입 구간에 몇 차례 더 재보정한다.
+        [50, 150, 300, 600, 1200, 2000].forEach((delay) => setTimeout(adjustContainerHeight, delay));
+
         window.addEventListener('resize', adjustContainerHeight);
         window.addEventListener('orientationchange', adjustContainerHeight);
+
+        // window의 resize 이벤트로는 안 잡히는 호스트 레이아웃 변화(상단바 높이 변경 등)를
+        // 감지하기 위해 문서 전체 크기 변화를 실시간으로 관찰한다.
+        let containerResizeObserver = null;
+        if (window.ResizeObserver) {
+            containerResizeObserver = new ResizeObserver(() => adjustContainerHeight());
+            containerResizeObserver.observe(document.body);
+        }
 
         const sidebar = document.getElementById('m3u-sidebar');
         const hotspot = document.getElementById('m3u-sidebar-hotspot');
@@ -355,6 +367,7 @@
             window.removeEventListener('beforeunload', cleanupAll);
             window.removeEventListener('resize', adjustContainerHeight);
             window.removeEventListener('orientationchange', adjustContainerHeight);
+            if (containerResizeObserver) containerResizeObserver.disconnect();
         }
 
         window.__ALIVE_CLEANUP__ = cleanupAll;
@@ -362,6 +375,7 @@
         function onTabRestored() {
             updateSidebarUI(false);
             if (!isSidebarCollapsed) scheduleIdleHide();
+            adjustContainerHeight();
 
             if (!window.__ALIVE_CACHE__.loaded || allChannels.length === 0) {
                 refreshAllSources(false);
