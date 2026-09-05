@@ -430,18 +430,40 @@
     z-index: 5;
 }
 
-/* 하단 채널 정보 바 고정 */
+/* 채널 정보 오버레이 배너 — 평소엔 숨겨져 있다가 화면(m3u-player-wrapper)에
+   마우스를 올리면 상단에 페이드인된다. 하단 네이티브 비디오 컨트롤바와
+   겹치지 않도록 상단에 배치하고, 위에서 아래로 어두워지는 그라데이션을 준다. */
 .m3u-current-channel-bar {
-    flex-shrink: 0;
-    min-height: 64px;
-    background: var(--app-bg-card);
-    border-top: 1px solid var(--app-border);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: 10px 16px;
+    padding: 16px 20px 40px;
     box-sizing: border-box;
-    z-index: 20;
+    z-index: 6;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.55) 55%, transparent 100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.m3u-player-wrapper:hover .m3u-current-channel-bar,
+.m3u-current-channel-bar:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.current-channel-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.current-channel-actions {
+    flex-shrink: 0;
 }
 
 .current-channel-top {
@@ -454,7 +476,7 @@
     background: none;
     border: none;
     font-size: 1.2rem;
-    color: var(--app-text-muted);
+    color: rgba(255, 255, 255, 0.7);
     cursor: pointer;
     padding: 0;
 }
@@ -466,34 +488,35 @@
 .current-title {
     margin: 0;
     font-size: 1.05rem;
-    color: var(--app-text-primary);
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
 .current-group {
     font-size: 0.8rem;
-    color: var(--app-text-muted);
+    color: rgba(255, 255, 255, 0.75);
 }
 
 .current-epg-info {
     margin-top: 4px;
     font-size: 0.82rem;
-    color: var(--app-text-secondary);
+    color: rgba(255, 255, 255, 0.85);
     display: flex;
     flex-direction: column;
     gap: 2px;
 }
 
 .epg-now {
-    color: var(--app-text-secondary);
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .epg-next {
-    color: var(--app-text-muted);
+    color: rgba(255, 255, 255, 0.6);
     font-size: 0.78rem;
 }
 
 .epg-next .epg-next-label {
-    color: var(--app-accent);
+    color: #7dd3fc;
     font-weight: 600;
 }
 

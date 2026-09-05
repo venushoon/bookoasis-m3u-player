@@ -59,27 +59,28 @@
         <div class="m3u-player-wrapper">
             <video id="video-element" class="m3u-video" controls playsinline></video>
             <div id="video-overlay-msg" class="m3u-overlay-msg">재생할 채널을 선택해 주세요.</div>
-        </div>
 
-        <!-- 하단 채널 메타데이터 & EPG 방영 정보 바 -->
-        <div class="m3u-current-channel-bar">
-            <div class="current-channel-meta">
-                <div class="current-channel-top">
-                    <button id="btn-fav-current" class="m3u-btn-fav" title="현재 채널 즐겨찾기">
-                        <i class="fa-regular fa-star far fa-star"></i>
+            <!-- 채널 메타데이터 & EPG 정보: 평소엔 숨겨져 있다가 화면에 마우스를
+                 올리면(hover) 상단에 페이드인되는 오버레이 배너 -->
+            <div class="m3u-current-channel-bar">
+                <div class="current-channel-meta">
+                    <div class="current-channel-top">
+                        <button id="btn-fav-current" class="m3u-btn-fav" title="현재 채널 즐겨찾기">
+                            <i class="fa-regular fa-star far fa-star"></i>
+                        </button>
+                        <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
+                        <span id="current-channel-group" class="current-group">그룹: -</span>
+                        <span id="current-resolution-badge" class="current-resolution-badge" style="display: none;"></span>
+                    </div>
+                    <div id="current-epg-info" class="current-epg-info">
+                        <div class="epg-now"><span class="epg-title">편성 정보 없음</span></div>
+                    </div>
+                </div>
+                <div class="current-channel-actions">
+                    <button id="btn-reload-stream" class="m3u-btn m3u-btn-secondary" title="스트림 재연결">
+                        <i class="fa-solid fa-arrows-rotate fas fa-sync-alt"></i> 재연결
                     </button>
-                    <h3 id="current-channel-name" class="current-title">선택된 채널 없음</h3>
-                    <span id="current-channel-group" class="current-group">그룹: -</span>
-                    <span id="current-resolution-badge" class="current-resolution-badge" style="display: none;"></span>
                 </div>
-                <div id="current-epg-info" class="current-epg-info">
-                    <div class="epg-now"><span class="epg-title">편성 정보 없음</span></div>
-                </div>
-            </div>
-            <div class="current-channel-actions">
-                <button id="btn-reload-stream" class="m3u-btn m3u-btn-secondary" title="스트림 재연결">
-                    <i class="fa-solid fa-arrows-rotate fas fa-sync-alt"></i> 재연결
-                </button>
             </div>
         </div>
     </main>
