@@ -26,6 +26,52 @@
     }
 
     const LS_PREFIX = 'bookoasis_m3u_player_';
+    const PLUGIN_ID = 'bookoasis_m3u_player';
+    const CONFIG_SCOPE = 'general';
+
+    // 서버(bookoasis_m3u_player.py)의 playlist.json에서 설정을 읽어온다.
+    // 실패하면 null을 반환 — 호출부는 localStorage 값으로 폴백한다.
+    async function loadConfigFromServer() {
+        try {
+            const res = await fetch(`/api/media/dashboard/widgets/${PLUGIN_ID}/data?type=${CONFIG_SCOPE}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (data && data.success === false) throw new Error(data.error || 'success:false');
+            if (data && data.config && typeof data.config === 'object') {
+                return data.config;
+            }
+            return null;
+        } catch (e) {
+            console.warn('[ALIVE Player] 서버 설정 조회 실패, 로컬 값을 사용합니다:', e.message);
+            return null;
+        }
+    }
+
+    // 현재 설정을 서버(playlist.json)에 저장한다. 성공/실패를 { ok, message } 형태로 반환.
+    async function saveConfigToServer(config) {
+        try {
+            const res = await fetch('/api/media/books/0/apply-metadata', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: CONFIG_SCOPE,
+                    source: PLUGIN_ID,
+                    item_data: { action: 'save_settings', config },
+                }),
+            });
+            if (res.status === 401 || res.status === 403) {
+                return { ok: false, message: '권한이 없습니다 (관리자 계정만 설정을 저장할 수 있습니다).' };
+            }
+            const result = await res.json().catch(() => null);
+            if (!res.ok || (result && result.success === false)) {
+                return { ok: false, message: (result && (result.error || result.message)) || `HTTP ${res.status}` };
+            }
+            return { ok: true, message: (result && result.message) || '저장되었습니다.' };
+        } catch (e) {
+            return { ok: false, message: e.message };
+        }
+    }
+
     const LS = {
         url1: LS_PREFIX + 'url1',
         url2: LS_PREFIX + 'url2',
@@ -523,15 +569,39 @@
         btnCloseModal.onclick = closeModal;
         btnModalCancel.onclick = closeModal;
 
-        btnModalSave.onclick = () => {
-            localStorage.setItem(LS.sources, JSON.stringify(readSourceRowsFromDOM()));
-            localStorage.setItem(LS.epgUrl1, cfgEpgUrl1.value.trim());
-            localStorage.setItem(LS.epgUrl2, cfgEpgUrl2.value.trim());
-            localStorage.setItem(LS.epgInterval, cfgEpgInterval.value);
-            localStorage.setItem(LS.playbackMode, cfgPlaybackMode.value);
-            localStorage.setItem(LS.autoResume, cfgAutoResume.checked ? 'true' : 'false');
+        btnModalSave.onclick = async () => {
+            const config = {
+                sources: readSourceRowsFromDOM(),
+                epgUrl1: cfgEpgUrl1.value.trim(),
+                epgUrl2: cfgEpgUrl2.value.trim(),
+                epgInterval: cfgEpgInterval.value,
+                playbackMode: cfgPlaybackMode.value,
+                autoResume: cfgAutoResume.checked,
+            };
+
+            // 서버 저장 실패에 대비한 로컬 백업(이 브라우저 한정 폴백)
+            localStorage.setItem(LS.sources, JSON.stringify(config.sources));
+            localStorage.setItem(LS.epgUrl1, config.epgUrl1);
+            localStorage.setItem(LS.epgUrl2, config.epgUrl2);
+            localStorage.setItem(LS.epgInterval, config.epgInterval);
+            localStorage.setItem(LS.playbackMode, config.playbackMode);
+            localStorage.setItem(LS.autoResume, config.autoResume ? 'true' : 'false');
+
+            const originalBtnHtml = btnModalSave.innerHTML;
+            btnModalSave.disabled = true;
+            btnModalSave.textContent = '저장 중...';
+
+            const result = await saveConfigToServer(config);
+
+            btnModalSave.disabled = false;
+            btnModalSave.innerHTML = originalBtnHtml;
+
             closeModal();
             refreshAllSources(true);
+
+            if (!result.ok) {
+                alert(`서버 저장에 실패했습니다 (${result.message}).\n이 기기에만 임시로 저장된 상태이니, 다른 기기/새로고침 후에는 사라질 수 있습니다.`);
+            }
         };
 
         async function refreshAllSources(forceRefresh = false) {
@@ -1210,8 +1280,29 @@
             if (loadingSpinner) loadingSpinner.style.display = isLoading ? 'inline' : 'none';
         }
 
-        loadFavorites();
-        refreshAllSources(false);
+        function applyServerConfigToLocalStorage(config) {
+            if (Array.isArray(config.sources)) {
+                localStorage.setItem(LS.sources, JSON.stringify(config.sources));
+            }
+            if (typeof config.epgUrl1 === 'string') localStorage.setItem(LS.epgUrl1, config.epgUrl1);
+            if (typeof config.epgUrl2 === 'string') localStorage.setItem(LS.epgUrl2, config.epgUrl2);
+            if (config.epgInterval !== undefined && config.epgInterval !== null) {
+                localStorage.setItem(LS.epgInterval, String(config.epgInterval));
+            }
+            if (typeof config.playbackMode === 'string') localStorage.setItem(LS.playbackMode, config.playbackMode);
+            if (typeof config.autoResume === 'boolean') {
+                localStorage.setItem(LS.autoResume, config.autoResume ? 'true' : 'false');
+            }
+        }
+
+        (async () => {
+            const serverConfig = await loadConfigFromServer();
+            if (serverConfig) {
+                applyServerConfigToLocalStorage(serverConfig);
+            }
+            loadFavorites();
+            refreshAllSources(false);
+        })();
     }
 
     ensureHlsLoaded(initM3UPlayer);
