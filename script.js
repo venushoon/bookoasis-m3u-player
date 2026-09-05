@@ -871,8 +871,16 @@
 
             if (!programList) {
                 const targetClean = cleanChannelName(channel.name);
-                if (targetClean) {
+                // 방송 제목이 곧 채널명인 경우(예: "[LCK] GEN vs HLE | 승자조 3라운드...")는
+                // 매번 문자열이 바뀌고 지나치게 길어서, 짧은 EPG 채널키가 우연히 그 안에
+                // 포함되어 전혀 다른 프로그램과 오매칭되는 사고가 잦다. 이런 동적 제목형
+                // 채널명은 부분일치 대상에서 아예 제외한다(정확히 일치하는 경우만 위에서
+                // 이미 처리됨. 여기 안 걸리면 "편성 정보 없음"으로 두는 게 안전하다).
+                const isDynamicTitleLike = targetClean.length > 24;
+
+                if (targetClean && targetClean.length >= 3 && !isDynamicTitleLike) {
                     for (const epgKey of Object.keys(dataMap)) {
+                        if (!epgKey || epgKey.length < 3) continue;
                         if (epgKey.includes(targetClean) || targetClean.includes(epgKey)) {
                             programList = dataMap[epgKey];
                             break;
