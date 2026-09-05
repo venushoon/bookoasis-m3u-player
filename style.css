@@ -478,6 +478,34 @@
     margin-top: 4px;
     font-size: 0.82rem;
     color: var(--app-text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.epg-now {
+    color: var(--app-text-secondary);
+}
+
+.epg-next {
+    color: var(--app-text-muted);
+    font-size: 0.78rem;
+}
+
+.epg-next .epg-next-label {
+    color: var(--app-accent);
+    font-weight: 600;
+}
+
+.current-resolution-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--app-accent);
+    color: #fff;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
 }
 
 /* 모달 다이얼로그 */

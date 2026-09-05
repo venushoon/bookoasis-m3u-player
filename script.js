@@ -158,6 +158,7 @@
         const btnFavCurrent = document.getElementById('btn-fav-current');
         const currentChannelName = document.getElementById('current-channel-name');
         const currentChannelGroup = document.getElementById('current-channel-group');
+        const currentResolutionBadge = document.getElementById('current-resolution-badge');
         const currentEpgInfo = document.getElementById('current-epg-info');
         const btnReloadStream = document.getElementById('btn-reload-stream');
 
@@ -311,6 +312,7 @@
             if (currentChannelName) currentChannelName.textContent = '선택된 채널 없음';
             if (currentChannelGroup) currentChannelGroup.textContent = '그룹: -';
             if (currentEpgInfo) currentEpgInfo.textContent = '편성 정보 없음';
+            if (currentResolutionBadge) currentResolutionBadge.style.display = 'none';
             if (videoOverlayMsg) {
                 videoOverlayMsg.textContent = '재생할 채널을 선택해 주세요.';
                 videoOverlayMsg.style.display = 'block';
@@ -842,7 +844,7 @@
             return resultData;
         }
 
-        function getNowProgram(channel) {
+        function getEpgInfo(channel) {
             const p1 = queryEpg(channel, epgData1);
             if (p1) return p1;
             return queryEpg(channel, epgData2);
@@ -881,7 +883,12 @@
 
             if (!programList || programList.length === 0) return null;
             const now = new Date();
-            return programList.find(p => now >= p.start && now <= p.stop) || null;
+            const nowIndex = programList.findIndex(p => now >= p.start && now <= p.stop);
+            if (nowIndex === -1) return null;
+            return {
+                now: programList[nowIndex],
+                next: programList[nowIndex + 1] || null,
+            };
         }
 
         function setupEpgInterval() {
@@ -1077,12 +1084,12 @@
                 details.appendChild(nameDiv);
                 details.appendChild(groupDiv);
 
-                const nowProg = getNowProgram(channel);
-                if (nowProg) {
+                const epgInfo = getEpgInfo(channel);
+                if (epgInfo && epgInfo.now) {
                     const timeFormat = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
                     const epgDiv = document.createElement('div');
                     epgDiv.className = 'channel-epg-now';
-                    epgDiv.textContent = `▶ ${nowProg.title} (${timeFormat(nowProg.start)}~)`;
+                    epgDiv.textContent = `▶ ${epgInfo.now.title} (${timeFormat(epgInfo.now.start)}~)`;
                     details.appendChild(epgDiv);
                 }
 
@@ -1093,18 +1100,52 @@
             });
         }
 
+        function resolutionLabel(height) {
+            if (!height) return null;
+            if (height >= 2160) return '4K';
+            if (height >= 1080) return 'FHD';
+            if (height >= 720) return 'HD';
+            if (height >= 480) return 'SD';
+            return `${height}p`;
+        }
+
+        function updateResolutionBadge(height) {
+            if (!currentResolutionBadge) return;
+            const label = resolutionLabel(height);
+            if (label) {
+                currentResolutionBadge.textContent = label;
+                currentResolutionBadge.style.display = 'inline-block';
+            } else {
+                currentResolutionBadge.style.display = 'none';
+            }
+        }
+
         function updateCurrentEpgDisplay(channel) {
-            const nowProg = getNowProgram(channel);
-            if (currentEpgInfo) {
-                if (nowProg) {
-                    const timeFormat = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-                    currentEpgInfo.textContent = '';
-                    const strong = document.createElement('strong');
-                    strong.textContent = '현재 방송:';
-                    currentEpgInfo.append(strong, ` ${nowProg.title} (${timeFormat(nowProg.start)} ~ ${timeFormat(nowProg.stop)})`);
-                } else {
-                    currentEpgInfo.textContent = '편성 정보 없음';
+            const epgInfo = getEpgInfo(channel);
+            if (!currentEpgInfo) return;
+
+            currentEpgInfo.textContent = '';
+            const timeFormat = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+            if (epgInfo && epgInfo.now) {
+                const nowDiv = document.createElement('div');
+                nowDiv.className = 'epg-now';
+                const strong = document.createElement('strong');
+                strong.textContent = '현재 방송:';
+                nowDiv.append(strong, ` ${epgInfo.now.title} (${timeFormat(epgInfo.now.start)} ~ ${timeFormat(epgInfo.now.stop)})`);
+                currentEpgInfo.appendChild(nowDiv);
+
+                if (epgInfo.next) {
+                    const nextDiv = document.createElement('div');
+                    nextDiv.className = 'epg-next';
+                    const label = document.createElement('span');
+                    label.className = 'epg-next-label';
+                    label.textContent = '다음 방송:';
+                    nextDiv.append(label, ` ${epgInfo.next.title} (${timeFormat(epgInfo.next.start)}~)`);
+                    currentEpgInfo.appendChild(nextDiv);
                 }
+            } else {
+                currentEpgInfo.textContent = '편성 정보 없음';
             }
         }
 
@@ -1211,6 +1252,12 @@
                         }
                     });
 
+                    hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+                        if (currentChannel !== channel) return;
+                        const level = hls.levels && hls.levels[data.level];
+                        updateResolutionBadge(level ? level.height : null);
+                    });
+
                     hls.on(Hls.Events.ERROR, (event, data) => {
                         if (currentChannel !== channel) return;
                         if (data.fatal && (isElementVisible(container) || isPipActive())) {
@@ -1257,9 +1304,12 @@
                         } else {
                             stopPlayback();
                         }
+                        updateResolutionBadge(videoElement.videoHeight);
                     }, { once: true });
                 }
             }
+
+            updateResolutionBadge(null);
 
             // 원본 채널 URL(무프록시)로 먼저 시도 — CORS를 여는 CDN이면 이게 더 빠르고 안정적
             startHlsPlayback(channel.url);
