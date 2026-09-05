@@ -127,9 +127,28 @@
         // 호스트 앱의 상단 UI 높이는 화면/기기마다 달라 고정값(CSS calc)으로는
         // 어긋날 수 있다. 실제 뷰포트에서 컨테이너가 시작하는 위치를 기준으로
         // 남은 높이를 매번 계산해 적용한다.
+        // window(브라우저 창) 기준으로 계산하면, 실제로 스크롤을 만드는 건
+        // window가 아니라 호스트 앱의 내부 콘텐츠 영역(overflow:auto인 조상
+        // 요소)인 경우가 있다. 그 실제 스크롤 조상을 찾아 그 박스 안에 정확히
+        // 맞춘다 — window 전체 높이를 기준으로 하면 그 조상의 실제 여유 공간과
+        // 어긋날 수 있다.
+        function findScrollableAncestor(el) {
+            let node = el.parentElement;
+            while (node && node !== document.body) {
+                const style = getComputedStyle(node);
+                if (/(auto|scroll)/.test(style.overflowY)) return node;
+                node = node.parentElement;
+            }
+            return null;
+        }
+
         function adjustContainerHeight() {
-            const top = container.getBoundingClientRect().top;
-            const available = window.innerHeight - top;
+            const containerTop = container.getBoundingClientRect().top;
+            const scrollAncestor = findScrollableAncestor(container);
+            const bottom = scrollAncestor
+                ? scrollAncestor.getBoundingClientRect().bottom
+                : window.innerHeight;
+            const available = bottom - containerTop;
             if (available > 100) {
                 container.style.height = `${available}px`;
             }
@@ -143,11 +162,13 @@
         window.addEventListener('orientationchange', adjustContainerHeight);
 
         // window의 resize 이벤트로는 안 잡히는 호스트 레이아웃 변화(상단바 높이 변경 등)를
-        // 감지하기 위해 문서 전체 크기 변화를 실시간으로 관찰한다.
+        // 감지하기 위해 문서 전체 및 실제 스크롤 조상의 크기 변화를 실시간으로 관찰한다.
         let containerResizeObserver = null;
         if (window.ResizeObserver) {
             containerResizeObserver = new ResizeObserver(() => adjustContainerHeight());
             containerResizeObserver.observe(document.body);
+            const scrollAncestor = findScrollableAncestor(container);
+            if (scrollAncestor) containerResizeObserver.observe(scrollAncestor);
         }
 
         const sidebar = document.getElementById('m3u-sidebar');
