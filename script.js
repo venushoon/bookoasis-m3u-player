@@ -123,6 +123,21 @@
     function initM3UPlayer() {
         migrateLegacyStorageKeys();
         const container = document.querySelector('.m3u-container');
+
+        // 호스트 앱의 상단 UI 높이는 화면/기기마다 달라 고정값(CSS calc)으로는
+        // 어긋날 수 있다. 실제 뷰포트에서 컨테이너가 시작하는 위치를 기준으로
+        // 남은 높이를 매번 계산해 적용한다.
+        function adjustContainerHeight() {
+            const top = container.getBoundingClientRect().top;
+            const available = window.innerHeight - top;
+            if (available > 100) {
+                container.style.height = `${available}px`;
+            }
+        }
+        adjustContainerHeight();
+        window.addEventListener('resize', adjustContainerHeight);
+        window.addEventListener('orientationchange', adjustContainerHeight);
+
         const sidebar = document.getElementById('m3u-sidebar');
         const hotspot = document.getElementById('m3u-sidebar-hotspot');
         const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
@@ -338,6 +353,8 @@
             window.removeEventListener('popstate', handleNavChange);
             window.removeEventListener('hashchange', handleNavChange);
             window.removeEventListener('beforeunload', cleanupAll);
+            window.removeEventListener('resize', adjustContainerHeight);
+            window.removeEventListener('orientationchange', adjustContainerHeight);
         }
 
         window.__ALIVE_CLEANUP__ = cleanupAll;
@@ -1114,6 +1131,16 @@
                 currentResolutionBadge.style.display = 'none';
             }
         }
+
+        // 매니페스트에 RESOLUTION 속성이 없는 단일 화질 스트림 등, hls.js의
+        // LEVEL_SWITCHED만으로는 해상도를 못 잡는 경우가 있다. 실제 디코딩된
+        // 프레임 크기가 바뀔 때 브라우저가 쏘는 네이티브 'resize' 이벤트를
+        // 보조 수단으로 쓰면 재생 방식(hls.js/네이티브)과 무관하게 항상 동작한다.
+        // videoElement는 채널 전환 시에도 재사용되는 고정 요소이므로 리스너는
+        // 여기서 한 번만 등록한다(채널마다 등록하면 계속 누적됨).
+        videoElement.addEventListener('resize', () => {
+            if (currentChannel) updateResolutionBadge(videoElement.videoHeight);
+        });
 
         function updateCurrentEpgDisplay(channel) {
             const epgInfo = getEpgInfo(channel);
