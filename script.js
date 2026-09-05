@@ -1273,7 +1273,12 @@
         }
 
         groupSelect.onchange = applyFilter;
-        if (sourceSelect) sourceSelect.onchange = applyFilter;
+        if (sourceSelect) {
+            sourceSelect.onchange = () => {
+                if (groupSelect) groupSelect.value = 'ALL';
+                applyFilter();
+            };
+        }
         searchInput.oninput = applyFilter;
 
         function showLoading(isLoading) {
