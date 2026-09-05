@@ -202,6 +202,7 @@
         const loadingSpinner = document.getElementById('loading-spinner');
 
         const videoElement = document.getElementById('video-element');
+        const playerWrapper = document.querySelector('.m3u-player-wrapper');
         const videoOverlayMsg = document.getElementById('video-overlay-msg');
         const btnFavCurrent = document.getElementById('btn-fav-current');
         const currentChannelName = document.getElementById('current-channel-name');
@@ -288,6 +289,36 @@
         btnSidebarToggle.addEventListener('mouseenter', revealSidebarOnHover);
 
         if (!isSidebarCollapsed) scheduleIdleHide();
+
+        // 화면(비디오) 위 채널 정보 오버레이: 마우스가 "올라가 있는 것"이 아니라
+        // "움직이는 동안"에만 보이도록 한다. 가만히 올려두면 3초 뒤 사라지고,
+        // 다시 움직이면 즉시 나타난다. 네이티브 비디오 컨트롤의 자동 숨김과
+        // 동일한 사용자 경험을 맞추기 위함.
+        let infoOverlayHideTimer = null;
+
+        function showInfoOverlay() {
+            if (!playerWrapper) return;
+            playerWrapper.classList.add('show-info');
+            if (infoOverlayHideTimer) clearTimeout(infoOverlayHideTimer);
+            infoOverlayHideTimer = setTimeout(() => {
+                playerWrapper.classList.remove('show-info');
+            }, 3000);
+        }
+
+        function hideInfoOverlayNow() {
+            if (!playerWrapper) return;
+            if (infoOverlayHideTimer) {
+                clearTimeout(infoOverlayHideTimer);
+                infoOverlayHideTimer = null;
+            }
+            playerWrapper.classList.remove('show-info');
+        }
+
+        if (playerWrapper) {
+            playerWrapper.addEventListener('mousemove', showInfoOverlay);
+            playerWrapper.addEventListener('mouseenter', showInfoOverlay);
+            playerWrapper.addEventListener('mouseleave', hideInfoOverlayNow);
+        }
 
         function toggleSidebar(e) {
             if (e) {
@@ -384,6 +415,10 @@
                 autoHideTimer = null;
             }
             clearIdleHideTimer();
+            if (infoOverlayHideTimer) {
+                clearTimeout(infoOverlayHideTimer);
+                infoOverlayHideTimer = null;
+            }
             window.removeEventListener('popstate', handleNavChange);
             window.removeEventListener('hashchange', handleNavChange);
             window.removeEventListener('beforeunload', cleanupAll);

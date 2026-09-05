@@ -453,7 +453,7 @@
     transition: opacity 0.25s ease;
 }
 
-.m3u-player-wrapper:hover .m3u-current-channel-bar,
+.m3u-player-wrapper.show-info .m3u-current-channel-bar,
 .m3u-current-channel-bar:focus-within {
     opacity: 1;
 }
