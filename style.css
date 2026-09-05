@@ -441,11 +441,14 @@
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    padding: 40px 20px 52px;
+    padding: 40px 20px 68px;
     box-sizing: border-box;
     z-index: 6;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.55) 55%, transparent 100%);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.55) 65%, transparent 100%);
     opacity: 0;
+    /* 오버레이 배경/텍스트 영역은 항상 클릭을 통과시켜 네이티브 비디오
+       컨트롤(재생바, 전체화면 등)을 가리지 않는다. 실제 클릭 가능한
+       버튼에만 아래에서 pointer-events: auto를 다시 켠다. */
     pointer-events: none;
     transition: opacity 0.25s ease;
 }
@@ -453,6 +456,9 @@
 .m3u-player-wrapper:hover .m3u-current-channel-bar,
 .m3u-current-channel-bar:focus-within {
     opacity: 1;
+}
+
+.m3u-current-channel-bar button {
     pointer-events: auto;
 }
 
