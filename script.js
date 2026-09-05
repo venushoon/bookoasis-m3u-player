@@ -208,7 +208,8 @@
         const currentChannelGroup = document.getElementById('current-channel-group');
         const currentResolutionBadge = document.getElementById('current-resolution-badge');
         const currentEpgInfo = document.getElementById('current-epg-info');
-        const btnReloadStream = document.getElementById('btn-reload-stream');
+        const btnPrevChannel = document.getElementById('btn-prev-channel');
+        const btnNextChannel = document.getElementById('btn-next-channel');
 
         if (!btnOpenSources || !videoElement || !container || !sidebar || !btnSidebarToggle) return;
 
@@ -1378,10 +1379,19 @@
             }
         });
 
-        if (btnReloadStream) {
-            btnReloadStream.onclick = () => {
-                if (currentChannel) playChannel(currentChannel);
-            };
+        function moveToAdjacentChannel(direction) {
+            if (!currentChannel || filteredChannels.length === 0) return;
+            const curIndex = filteredChannels.findIndex(c => c.url === currentChannel.url);
+            if (curIndex === -1) return;
+            const nextIndex = (curIndex + direction + filteredChannels.length) % filteredChannels.length;
+            playChannel(filteredChannels[nextIndex]);
+        }
+
+        if (btnPrevChannel) {
+            btnPrevChannel.onclick = () => moveToAdjacentChannel(-1);
+        }
+        if (btnNextChannel) {
+            btnNextChannel.onclick = () => moveToAdjacentChannel(1);
         }
 
         groupSelect.onchange = applyFilter;

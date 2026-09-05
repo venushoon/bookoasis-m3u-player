@@ -435,16 +435,16 @@
    겹치지 않도록 상단에 배치하고, 위에서 아래로 어두워지는 그라데이션을 준다. */
 .m3u-current-channel-bar {
     position: absolute;
-    top: 0;
+    bottom: 0;
     left: 0;
     right: 0;
     display: flex;
-    align-items: flex-start;
+    align-items: flex-end;
     justify-content: space-between;
-    padding: 16px 20px 40px;
+    padding: 40px 20px 52px;
     box-sizing: border-box;
     z-index: 6;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.55) 55%, transparent 100%);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.55) 55%, transparent 100%);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.25s ease;
@@ -464,6 +464,8 @@
 
 .current-channel-actions {
     flex-shrink: 0;
+    display: flex;
+    gap: 6px;
 }
 
 .current-channel-top {
