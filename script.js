@@ -966,7 +966,13 @@
         function updateFilterSelects() {
             if (!groupSelect) return;
             const curGroup = groupSelect.value;
-            const groups = Array.from(new Set(allChannels.map(c => c.group || '기타'))).sort();
+            const curSource = sourceSelect ? sourceSelect.value : 'ALL';
+
+            // 그룹 목록은 "현재 선택된 소스"에 속한 채널만 기준으로 만든다
+            const channelsForGroupList = (curSource === 'ALL')
+                ? allChannels
+                : allChannels.filter(c => (c.source || '기본') === curSource);
+            const groups = Array.from(new Set(channelsForGroupList.map(c => c.group || '기타'))).sort();
 
             groupSelect.innerHTML = `
                 <option value="ALL">전체 그룹</option>
@@ -985,7 +991,6 @@
             }
 
             if (sourceSelect) {
-                const curSource = sourceSelect.value;
                 const sourceNames = Array.from(new Set(allChannels.map(c => c.source || '기본'))).sort();
 
                 sourceSelect.innerHTML = `<option value="ALL">전체 소스</option>`;
@@ -1276,6 +1281,7 @@
         if (sourceSelect) {
             sourceSelect.onchange = () => {
                 if (groupSelect) groupSelect.value = 'ALL';
+                updateFilterSelects();
                 applyFilter();
             };
         }
