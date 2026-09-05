@@ -869,25 +869,12 @@
                 }
             }
 
-            if (!programList) {
-                const targetClean = cleanChannelName(channel.name);
-                // 방송 제목이 곧 채널명인 경우(예: "[LCK] GEN vs HLE | 승자조 3라운드...")는
-                // 매번 문자열이 바뀌고 지나치게 길어서, 짧은 EPG 채널키가 우연히 그 안에
-                // 포함되어 전혀 다른 프로그램과 오매칭되는 사고가 잦다. 이런 동적 제목형
-                // 채널명은 부분일치 대상에서 아예 제외한다(정확히 일치하는 경우만 위에서
-                // 이미 처리됨. 여기 안 걸리면 "편성 정보 없음"으로 두는 게 안전하다).
-                const isDynamicTitleLike = targetClean.length > 24;
-
-                if (targetClean && targetClean.length >= 3 && !isDynamicTitleLike) {
-                    for (const epgKey of Object.keys(dataMap)) {
-                        if (!epgKey || epgKey.length < 3) continue;
-                        if (epgKey.includes(targetClean) || targetClean.includes(epgKey)) {
-                            programList = dataMap[epgKey];
-                            break;
-                        }
-                    }
-                }
-            }
+            // ⚠️ 과거에는 정확히 일치하는 키가 없을 때 부분일치(includes)로 한 번 더
+            // 찾아주는 폴백이 있었으나, CHZZK/KBO처럼 채널명이 매번 바뀌는 동적
+            // 방송 제목형 채널에서 짧은 EPG 키가 우연히 그 안에 포함되어 전혀 다른
+            // 프로그램과 오매칭되는 사고가 반복적으로 발생해 완전히 제거했다.
+            // 정확히 일치하는 키가 없으면 "편성 정보 없음"으로 두는 편이
+            // 틀린 정보를 보여주는 것보다 안전하다.
 
             if (!programList || programList.length === 0) return null;
             const now = new Date();
