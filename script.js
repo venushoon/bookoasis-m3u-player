@@ -514,22 +514,52 @@
             }
         });
 
+        // 이미 우리 호스트의 프록시(/api/webview/hls-proxy 또는 /api/webview/proxy)로
+        // 한 번 감싸진 URL인지 확인한다. M3U 소스가 이미 프록시로 감싼 링크를 줄 때,
+        // 그걸 모르고 getStreamProxyUrl/getProxyUrl로 또 감싸면 "프록시의 프록시"
+        // (/proxy?url=/proxy?url=...) 형태가 되어 서버가 예상 밖의 응답(403, 로그인
+        // 필요 등)을 줄 수 있다. 재생 전 항상 이 함수로 한 번 풀어서 진짜 원본
+        // URL을 얻은 뒤에만 프록시를 씌운다.
+        function unwrapProxyUrl(url) {
+            let cur = String(url || '').trim();
+            let origin = 'http://127.0.0.1';
+            try {
+                if (window.location && window.location.origin) origin = window.location.origin;
+            } catch (e) { /* ignore */ }
+
+            for (let n = 0; n < 8; n += 1) {
+                try {
+                    const abs = new URL(cur, origin);
+                    if (!/\/api\/webview\/(hls-)?proxy(?:$|[/?])/i.test(abs.pathname + abs.search)) break;
+                    if (!abs.searchParams.has('url')) break;
+                    const inner = abs.searchParams.get('url') || '';
+                    if (!inner || inner === cur) break;
+                    cur = inner;
+                } catch (e) {
+                    break;
+                }
+            }
+            return cur;
+        }
+
         async function resolveProxyUrl(url) {
             if (!url) return null;
+            const real = unwrapProxyUrl(url);
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getProxyUrl === 'function') {
-                const proxied = await window.BookOasisPlugin.getProxyUrl(url);
-                return proxied || url;
+                const proxied = await window.BookOasisPlugin.getProxyUrl(real);
+                return proxied || real;
             }
-            return url;
+            return real;
         }
 
         async function resolveStreamUrl(url) {
             if (!url) return null;
+            const real = unwrapProxyUrl(url);
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getStreamProxyUrl === 'function') {
-                const streamProxied = await window.BookOasisPlugin.getStreamProxyUrl(url);
-                return streamProxied || url;
+                const streamProxied = await window.BookOasisPlugin.getStreamProxyUrl(real);
+                return streamProxied || real;
             }
-            return url;
+            return real;
         }
 
         function cleanChannelName(str) {
