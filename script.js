@@ -211,6 +211,7 @@
         const currentEpgInfo = document.getElementById('current-epg-info');
         const btnPrevChannel = document.getElementById('btn-prev-channel');
         const btnNextChannel = document.getElementById('btn-next-channel');
+        const btnOpenExternal = document.getElementById('btn-open-external');
 
         if (!btnOpenSources || !videoElement || !container || !sidebar || !btnSidebarToggle) return;
 
@@ -1457,6 +1458,40 @@
         }
         if (btnNextChannel) {
             btnNextChannel.onclick = () => moveToAdjacentChannel(1);
+        }
+
+        // VLC/Kodi/TiviMate 등 외부 플레이어는 브라우저 CORS 규칙을 안 타므로,
+        // 우리 프록시를 거칠 필요 없이 진짜 원본 스트림 URL을 그대로 넣어주면 된다.
+        // (이미 프록시로 감싸진 링크라면 unwrapProxyUrl로 진짜 원본만 뽑아낸다.)
+        //
+        // 앱마다 다른 딥링크(vlc://, intent:// 등)를 직접 만드는 대신, 아주 작은
+        // .m3u8 재생목록 파일을 그 자리에서 만들어 다운로드시킨다. .m3u8/.m3u
+        // 파일을 열 때 "연결 프로그램 선택"(+ 항상 이 앱으로 열기) 창을 띄우는
+        // 것은 OS/브라우저가 이미 기본 제공하는 기능이라, 우리는 파일만 만들면
+        // 그 다음은 전부 OS가 처리한다. VLC/Kodi는 물론, TiviMate 등 M3U를
+        // 받아들이는 대부분의 플레이어가 이 방식으로 선택지에 뜰 가능성이 높다.
+        if (btnOpenExternal) {
+            btnOpenExternal.onclick = () => {
+                if (!currentChannel) return;
+                const realUrl = unwrapProxyUrl(currentChannel.url);
+                const playlistText = `#EXTM3U\n#EXTINF:-1,${currentChannel.name}\n${realUrl}\n`;
+                const blob = new Blob([playlistText], { type: 'application/vnd.apple.mpegurl' });
+                const blobUrl = URL.createObjectURL(blob);
+
+                const safeFileName = (currentChannel.name || 'channel')
+                    .replace(/[\\/:*?"<>|]/g, '_')
+                    .slice(0, 60);
+
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `${safeFileName}.m3u8`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                // 다운로드가 비동기로 처리되는 브라우저를 고려해 약간의 지연 후 해제
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+            };
         }
 
         groupSelect.onchange = applyFilter;
