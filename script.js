@@ -19,10 +19,38 @@
             callback();
             return;
         }
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
-        script.onload = callback;
-        document.head.appendChild(script);
+
+        // 네트워크 문제나 광고 차단기로 hls.js 로드가 막히면 onload/onerror 둘 다
+        // 안 뜨는 경우는 없지만, onerror를 안 잡으면 콜백이 영원히 안 불려서
+        // 플레이어가 아무 안내 없이 그냥 멈춘 것처럼 보인다. 기본 CDN 실패 시
+        // 대체 CDN으로 한 번 더 시도하고, 그마저 실패하면 사용자에게 알린다.
+        function loadScript(src, onFail) {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = () => {
+                if (window.Hls) {
+                    callback();
+                } else {
+                    // 스크립트 응답은 왔지만 전역 Hls가 없는 비정상 상황(예: CDN이 에러 페이지를 반환)
+                    onFail();
+                }
+            };
+            script.onerror = onFail;
+            document.head.appendChild(script);
+        }
+
+        function showLoadFailure() {
+            console.error('[ALIVE Player] hls.js 로드 실패 - 네트워크 상태 또는 광고 차단기를 확인해 주세요.');
+            const container = document.querySelector('.m3u-container');
+            if (container) {
+                container.innerHTML = '<div style="padding:24px;text-align:center;color:#fff;">플레이어를 불러오지 못했습니다.<br>네트워크 연결 또는 광고 차단기를 확인한 뒤 새로고침 해주세요.</div>';
+            }
+        }
+
+        loadScript('https://cdn.jsdelivr.net/npm/hls.js@latest', () => {
+            console.warn('[ALIVE Player] 기본 CDN에서 hls.js 로드 실패, 대체 CDN으로 재시도...');
+            loadScript('https://unpkg.com/hls.js@latest', showLoadFailure);
+        });
     }
 
     const LS_PREFIX = 'bookoasis_m3u_player_';
@@ -438,6 +466,13 @@
             window.removeEventListener('resize', adjustContainerHeight);
             window.removeEventListener('orientationchange', adjustContainerHeight);
             if (containerResizeObserver) containerResizeObserver.disconnect();
+            // videoElement는 SPA 재진입 시에도 재사용되는 고정 요소라, 여기서 해제하지
+            // 않으면 initM3UPlayer()가 다시 실행될 때마다 리스너가 계속 누적된다.
+            if (videoElement) {
+                videoElement.removeEventListener('leavepictureinpicture', handleVideoLeavePip);
+                videoElement.removeEventListener('resize', handleVideoResize);
+                videoElement.removeEventListener('waiting', handleVideoWaiting);
+            }
         }
 
         window.__ALIVE_CLEANUP__ = cleanupAll;
@@ -502,13 +537,14 @@
             subtree: true,
         });
 
-        videoElement.addEventListener('leavepictureinpicture', () => {
+        function handleVideoLeavePip() {
             setTimeout(() => {
                 if (!isElementVisible(container)) {
                     stopPlayback();
                 }
             }, 50);
-        });
+        }
+        videoElement.addEventListener('leavepictureinpicture', handleVideoLeavePip);
 
         function handleNavChange() {
             if (!isPipActive() && !isElementVisible(container)) {
@@ -1305,9 +1341,10 @@
         // 보조 수단으로 쓰면 재생 방식(hls.js/네이티브)과 무관하게 항상 동작한다.
         // videoElement는 채널 전환 시에도 재사용되는 고정 요소이므로 리스너는
         // 여기서 한 번만 등록한다(채널마다 등록하면 계속 누적됨).
-        videoElement.addEventListener('resize', () => {
+        function handleVideoResize() {
             if (currentChannel) updateResolutionBadge(videoElement.videoHeight);
-        });
+        }
+        videoElement.addEventListener('resize', handleVideoResize);
 
         function updateCurrentEpgDisplay(channel) {
             const epgInfo = getEpgInfo(channel);
@@ -1608,11 +1645,12 @@
             }
         }
 
-        videoElement.addEventListener('waiting', () => {
+        function handleVideoWaiting() {
             if (hls && !videoElement.paused && (isElementVisible(container) || isPipActive())) {
                 hls.startLoad();
             }
-        });
+        }
+        videoElement.addEventListener('waiting', handleVideoWaiting);
 
         function moveToAdjacentChannel(direction) {
             if (!currentChannel || filteredChannels.length === 0) return;
