@@ -84,6 +84,11 @@
         playbackMode: LS_PREFIX + 'playback_mode',
         autoResume: LS_PREFIX + 'autoresume',
         lastUrl: LS_PREFIX + 'last_url',
+        // 도메인(host) 단위로 "원본 URL이 안 되고 프록시가 필요했다"고 학습한 기록.
+        // { host: 마지막으로 확인된 시각(ms) } 형태. 티빙처럼 특정 CDN에서만
+        // CORS/403 문제가 나는 경우, 같은 host를 쓰는 다른 채널들도 매번
+        // "원본 시도(타임아웃) → 실패 → 프록시 재시도" 왕복을 겪지 않도록 한다.
+        proxyRequiredHosts: LS_PREFIX + 'proxy_required_hosts',
     };
 
     function migrateLegacyStorageKeys() {
@@ -568,6 +573,59 @@
                 return streamProxied || real;
             }
             return real;
+        }
+
+        // ── host 단위 프록시 필요 여부 학습 캐시 ──────────────────────────────
+        // "원본 URL 먼저 시도 → 실패시 프록시" 기본 전략은 그대로 유지하되,
+        // 특정 CDN(host)에서 반복적으로 실패해 프록시로 전환한 적이 있으면
+        // 그 사실을 기억해서, 같은 host의 다른 채널까지 매번 헛된 원본 시도를
+        // 반복하지 않게 한다. 단, 서버 쪽(hls-proxy) 문제가 나중에 고쳐질 수도
+        // 있으니 TTL을 두어 일정 시간 뒤엔 다시 원본부터 검증해본다.
+        const PROXY_LEARNING_TTL_MS = 6 * 60 * 60 * 1000; // 6시간
+
+        function getUrlHost(url) {
+            try {
+                return new URL(unwrapProxyUrl(url), window.location.origin).host || null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function loadProxyRequiredMap() {
+            try {
+                return JSON.parse(localStorage.getItem(LS.proxyRequiredHosts) || '{}');
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function saveProxyRequiredMap(map) {
+            try {
+                localStorage.setItem(LS.proxyRequiredHosts, JSON.stringify(map));
+            } catch (e) { /* ignore */ }
+        }
+
+        function shouldTryProxyFirst(url) {
+            const host = getUrlHost(url);
+            if (!host) return false;
+            const map = loadProxyRequiredMap();
+            const markedAt = map[host];
+            if (!markedAt) return false;
+            if (Date.now() - markedAt > PROXY_LEARNING_TTL_MS) {
+                // TTL 만료 — 그동안 서버/CDN 쪽이 고쳐졌을 수 있으니 다시 원본부터 검증
+                delete map[host];
+                saveProxyRequiredMap(map);
+                return false;
+            }
+            return true;
+        }
+
+        function markHostNeedsProxy(url) {
+            const host = getUrlHost(url);
+            if (!host) return;
+            const map = loadProxyRequiredMap();
+            map[host] = Date.now();
+            saveProxyRequiredMap(map);
         }
 
         function cleanChannelName(str) {
@@ -1399,6 +1457,21 @@
                     if (stalledFor >= STALL_THRESHOLD_MS) {
                         console.warn(`[ALIVE] 워치독: 에러 없이 ${Math.round(stalledFor / 1000)}초간 재생 진행 없음, 강제 복구 시도...`);
                         lastProgressAt = Date.now(); // 매 체크마다 반복 트리거되지 않도록 기준 시각 갱신
+
+                        // 아직 원본(무프록시) URL로 재생 중인데 에러 이벤트 하나 없이 멈춰있다면,
+                        // hls.js 내부 복구(recoverMediaError/startLoad)로는 못 푸는 CORS성 무음
+                        // 정지일 가능성이 높다. 이 경우 매니페스트/레벨 에러와 동일하게 프록시로
+                        // 전환하고, 이 host를 학습해둔다.
+                        if (!usingProxyFallback) {
+                            console.warn('[ALIVE] 워치독: 원본 URL 무음 정지로 판단, 프록시로 전환 시도...');
+                            usingProxyFallback = true;
+                            markHostNeedsProxy(channel.url);
+                            resolveStreamUrl(channel.url).then((proxiedUrl) => {
+                                if (currentChannel === channel) startHlsPlayback(proxiedUrl);
+                            });
+                            return;
+                        }
+
                         if (hls) {
                             try {
                                 hls.recoverMediaError();
@@ -1469,6 +1542,11 @@
                             Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
                             Hls.ErrorDetails.LEVEL_LOAD_ERROR,
                             Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT,
+                            // 매니페스트는 성공했지만 실제 세그먼트(fragment)만 막히는 CDN이 있다
+                            // (티빙 등 다단계 CDN에서 흔함) — 이 경우도 원본 URL이 안 되는 것으로
+                            // 보고 프록시로 넘겨야, 막힌 원본을 startLoad()로 무한 재시도하지 않는다.
+                            Hls.ErrorDetails.FRAG_LOAD_ERROR,
+                            Hls.ErrorDetails.FRAG_LOAD_TIMEOUT,
                         ].includes(data.details);
 
                         switch (data.type) {
@@ -1476,6 +1554,7 @@
                                 if (isEarlyLoadError && !usingProxyFallback) {
                                     console.warn('[ALIVE] 원본 URL 재생 실패, 프록시 경유로 재시도...');
                                     usingProxyFallback = true;
+                                    markHostNeedsProxy(channel.url);
                                     resolveStreamUrl(channel.url).then((proxiedUrl) => {
                                         if (currentChannel === channel) startHlsPlayback(proxiedUrl);
                                     });
@@ -1514,8 +1593,19 @@
 
             updateResolutionBadge(null);
 
-            // 원본 채널 URL(무프록시)로 먼저 시도 — CORS를 여는 CDN이면 이게 더 빠르고 안정적
-            startHlsPlayback(channel.url);
+            // 기본 전략은 "원본 채널 URL(무프록시)로 먼저 시도" — CORS를 여는 CDN이면 이게 더
+            // 빠르고 안정적이라 그대로 유지한다. 다만 이 채널의 host가 최근에 원본으로는 안 되고
+            // 프록시가 필요하다고 학습된 적이 있으면(TTL 이내), 매번 실패할 게 뻔한 원본 시도를
+            // 건너뛰고 바로 프록시로 시작해 불필요한 대기/깜빡임을 없앤다.
+            if (shouldTryProxyFirst(channel.url)) {
+                usingProxyFallback = true;
+                console.warn('[ALIVE] 이 host는 최근 프록시가 필요했던 것으로 학습됨, 프록시로 바로 시작...');
+                resolveStreamUrl(channel.url).then((proxiedUrl) => {
+                    if (currentChannel === channel) startHlsPlayback(proxiedUrl);
+                });
+            } else {
+                startHlsPlayback(channel.url);
+            }
         }
 
         videoElement.addEventListener('waiting', () => {
