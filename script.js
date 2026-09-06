@@ -112,10 +112,13 @@
         playbackMode: LS_PREFIX + 'playback_mode',
         autoResume: LS_PREFIX + 'autoresume',
         lastUrl: LS_PREFIX + 'last_url',
-        // 도메인(host) 단위로 "원본 URL이 안 되고 프록시가 필요했다"고 학습한 기록.
-        // { host: 마지막으로 확인된 시각(ms) } 형태. 티빙처럼 특정 CDN에서만
-        // CORS/403 문제가 나는 경우, 같은 host를 쓰는 다른 채널들도 매번
-        // "원본 시도(타임아웃) → 실패 → 프록시 재시도" 왕복을 겪지 않도록 한다.
+        // "원본 URL이 안 되고 프록시가 필요했다"고 학습한 기록.
+        // { "host::소스구분값": 마지막으로 확인된 시각(ms) } 형태. host만 쓰지 않는
+        // 이유는 하나의 릴레이 서버가 쿼리스트링(s=tving, s=chzzk 등)만 바꿔
+        // 여러 소스를 서빙하는 구조라, host 단위로 학습하면 티빙 실패가 같은
+        // host의 CHZZK 등 잘 되는 소스까지 프록시로 밀어넣어 예전 hls-proxy
+        // 403 버그를 엉뚱한 소스에 되살릴 수 있기 때문이다. 자세한 내용은
+        // getProxyLearningKey() 주석 참고.
         proxyRequiredHosts: LS_PREFIX + 'proxy_required_hosts',
     };
 
@@ -611,17 +614,36 @@
             return real;
         }
 
-        // ── host 단위 프록시 필요 여부 학습 캐시 ──────────────────────────────
+        // ── host+소스 단위 프록시 필요 여부 학습 캐시 ─────────────────────────
         // "원본 URL 먼저 시도 → 실패시 프록시" 기본 전략은 그대로 유지하되,
-        // 특정 CDN(host)에서 반복적으로 실패해 프록시로 전환한 적이 있으면
-        // 그 사실을 기억해서, 같은 host의 다른 채널까지 매번 헛된 원본 시도를
-        // 반복하지 않게 한다. 단, 서버 쪽(hls-proxy) 문제가 나중에 고쳐질 수도
-        // 있으니 TTL을 두어 일정 시간 뒤엔 다시 원본부터 검증해본다.
+        // 특정 업스트림에서 반복적으로 실패해 프록시로 전환한 적이 있으면
+        // 그 사실을 기억해서, 같은 업스트림의 다른 채널까지 매번 헛된 원본
+        // 시도를 반복하지 않게 한다. 단, 서버 쪽(hls-proxy) 문제가 나중에
+        // 고쳐질 수도 있으니 TTL을 두어 일정 시간 뒤엔 다시 원본부터 검증한다.
+        //
+        // 주의: 우리 릴레이 서버(예: s1f.oracle1126.duckdns.org)는 host 하나가
+        // 쿼리스트링(s=chzzk, s=tving 등)만 바꿔서 서로 다른 업스트림(CHZZK,
+        // 티빙 등)을 서빙하는 구조다. 즉 host가 같아도 실제 CORS/403 특성은
+        // 소스마다 완전히 다를 수 있다 — 예: 티빙(s=tving)은 원본이 막히고
+        // CHZZK(s=chzzk)는 원본이 잘 되는데, host만 보고 학습하면 티빙 실패가
+        // CHZZK까지 "프록시 필요"로 오염시켜서, 원래 문제였던 hls-proxy의
+        // 특정 쿼리스트링 403 버그를 CHZZK 쪽에 되살릴 위험이 있다.
+        // 그래서 host만이 아니라 "소스 구분값"까지 포함해 키를 만든다:
+        // 쿼리스트링에 s/source/type 같은 구분 파라미터가 있으면 그 값을,
+        // 없으면 pathname(첫 segment 등 실제 라우팅에 쓰이는 부분)을 fallback
+        // 구분값으로 써서, 같은 host 안에서도 소스별로 독립적으로 학습한다.
         const PROXY_LEARNING_TTL_MS = 6 * 60 * 60 * 1000; // 6시간
 
-        function getUrlHost(url) {
+        function getProxyLearningKey(url) {
             try {
-                return new URL(unwrapProxyUrl(url), window.location.origin).host || null;
+                const abs = new URL(unwrapProxyUrl(url), window.location.origin);
+                if (!abs.host) return null;
+                const sourceParam =
+                    abs.searchParams.get('s') ||
+                    abs.searchParams.get('source') ||
+                    abs.searchParams.get('type');
+                const discriminator = sourceParam || abs.pathname || '';
+                return `${abs.host}::${discriminator}`;
             } catch (e) {
                 return null;
             }
@@ -642,14 +664,14 @@
         }
 
         function shouldTryProxyFirst(url) {
-            const host = getUrlHost(url);
-            if (!host) return false;
+            const key = getProxyLearningKey(url);
+            if (!key) return false;
             const map = loadProxyRequiredMap();
-            const markedAt = map[host];
+            const markedAt = map[key];
             if (!markedAt) return false;
             if (Date.now() - markedAt > PROXY_LEARNING_TTL_MS) {
                 // TTL 만료 — 그동안 서버/CDN 쪽이 고쳐졌을 수 있으니 다시 원본부터 검증
-                delete map[host];
+                delete map[key];
                 saveProxyRequiredMap(map);
                 return false;
             }
@@ -657,12 +679,13 @@
         }
 
         function markHostNeedsProxy(url) {
-            const host = getUrlHost(url);
-            if (!host) return;
+            const key = getProxyLearningKey(url);
+            if (!key) return;
             const map = loadProxyRequiredMap();
-            map[host] = Date.now();
+            map[key] = Date.now();
             saveProxyRequiredMap(map);
         }
+
 
         function cleanChannelName(str) {
             if (!str) return '';
