@@ -224,6 +224,9 @@
         let currentChannel = window.__ALIVE_CACHE__.lastChannel || null;
         let hls = null;
         let epgTimer = null;
+        // 버그2 수정: hls.js가 에러 자체를 안 내는 "무음 정지"를 잡아내기 위한 워치독 타이머.
+        // stopPlayback()에서도 정리해야 해서 모듈 스코프에 둔다.
+        let playbackWatchdogTimer = null;
         let autoHideTimer = null;
         let lastVisibleState = true;
 
@@ -370,6 +373,10 @@
         }
 
         function stopPlayback() {
+            if (playbackWatchdogTimer) {
+                clearInterval(playbackWatchdogTimer);
+                playbackWatchdogTimer = null;
+            }
             if (hls) {
                 try {
                     hls.stopLoad();
@@ -1356,6 +1363,53 @@
             videoElement.addEventListener('playing', hideConnectingOverlay, { once: true });
 
             let usingProxyFallback = false;
+            // 버그1 수정: fatal이 아닌 에러(버퍼 스톨 등)도 완전히 무시하지 않도록 최근 발생 시각을 추적한다.
+            let nonFatalStallTimestamps = [];
+
+            // 버그2 수정: hls.js가 에러를 아예 내지 않는 "무음 정지"를 잡아내기 위한 워치독.
+            // 재생 중(paused 아님)인데 videoElement.currentTime이 일정 시간 이상 전혀 진행되지
+            // 않으면, 에러 이벤트 유무와 무관하게 강제로 복구를 시도한다.
+            function startPlaybackWatchdog(streamUrl) {
+                if (playbackWatchdogTimer) {
+                    clearInterval(playbackWatchdogTimer);
+                }
+
+                const STALL_THRESHOLD_MS = 15000; // 이 시간 동안 진행이 없으면 무음 정지로 간주
+                const CHECK_INTERVAL_MS = 3000;
+                let lastCurrentTime = -1;
+                let lastProgressAt = Date.now();
+
+                playbackWatchdogTimer = setInterval(() => {
+                    if (currentChannel !== channel) {
+                        clearInterval(playbackWatchdogTimer);
+                        playbackWatchdogTimer = null;
+                        return;
+                    }
+                    if (!(isElementVisible(container) || isPipActive())) return;
+                    if (!videoElement || videoElement.paused || videoElement.ended) return;
+
+                    const nowCurrentTime = videoElement.currentTime;
+                    if (nowCurrentTime !== lastCurrentTime) {
+                        lastCurrentTime = nowCurrentTime;
+                        lastProgressAt = Date.now();
+                        return;
+                    }
+
+                    const stalledFor = Date.now() - lastProgressAt;
+                    if (stalledFor >= STALL_THRESHOLD_MS) {
+                        console.warn(`[ALIVE] 워치독: 에러 없이 ${Math.round(stalledFor / 1000)}초간 재생 진행 없음, 강제 복구 시도...`);
+                        lastProgressAt = Date.now(); // 매 체크마다 반복 트리거되지 않도록 기준 시각 갱신
+                        if (hls) {
+                            try {
+                                hls.recoverMediaError();
+                            } catch (e) {}
+                            hls.startLoad();
+                        } else if (currentChannel === channel) {
+                            startHlsPlayback(streamUrl);
+                        }
+                    }
+                }, CHECK_INTERVAL_MS);
+            }
 
             function startHlsPlayback(streamUrl) {
                 if (window.Hls && Hls.isSupported()) {
@@ -1367,6 +1421,8 @@
                     hls = new Hls(hlsConfig);
                     hls.loadSource(streamUrl);
                     hls.attachMedia(videoElement);
+                    nonFatalStallTimestamps = [];
+                    startPlaybackWatchdog(streamUrl);
 
                     hls.on(Hls.Events.MANIFEST_PARSED, () => {
                         if (isElementVisible(container) || isPipActive()) {
@@ -1384,44 +1440,67 @@
 
                     hls.on(Hls.Events.ERROR, (event, data) => {
                         if (currentChannel !== channel) return;
-                        if (data.fatal && (isElementVisible(container) || isPipActive())) {
-                            const isEarlyLoadError = [
-                                Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
-                                Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
-                                Hls.ErrorDetails.LEVEL_LOAD_ERROR,
-                                Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT,
-                            ].includes(data.details);
+                        if (!(isElementVisible(container) || isPipActive())) return;
 
-                            switch (data.type) {
-                                case Hls.ErrorTypes.NETWORK_ERROR:
-                                    if (isEarlyLoadError && !usingProxyFallback) {
-                                        console.warn('[ALIVE] 원본 URL 재생 실패, 프록시 경유로 재시도...');
-                                        usingProxyFallback = true;
-                                        resolveStreamUrl(channel.url).then((proxiedUrl) => {
-                                            if (currentChannel === channel) startHlsPlayback(proxiedUrl);
-                                        });
-                                        return;
-                                    }
-                                    console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
-                                    hls.startLoad();
-                                    break;
-                                case Hls.ErrorTypes.MEDIA_ERROR:
-                                    console.warn('[ALIVE] 미디어 버퍼 스톨 복구 시도...');
-                                    hls.recoverMediaError();
-                                    break;
-                                default:
-                                    console.error('[ALIVE] 스트림 fatal 오류:', data);
-                                    stopPlayback();
-                                    if (videoOverlayMsg) {
-                                        videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
-                                        videoOverlayMsg.style.display = 'block';
-                                    }
-                                    break;
+                        if (!data.fatal) {
+                            // 버그1 수정: 예전엔 여기서 그냥 무시했다. hls.js는 버퍼 스톨을 처음엔
+                            // fatal:false로 알리고 스스로 복구를 시도하는데, 그 내부 복구가 실패하면
+                            // 아무 로그도 없이 멈춘 채로 남는다. 최소한 로그를 남기고, 짧은 시간 안에
+                            // 반복되면(내부 복구가 안 먹히고 있다는 뜻) 명시적으로 복구를 강제한다.
+                            console.warn('[ALIVE] non-fatal 오류 감지:', data.type, data.details);
+
+                            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                                const now = Date.now();
+                                nonFatalStallTimestamps.push(now);
+                                nonFatalStallTimestamps = nonFatalStallTimestamps.filter((t) => now - t <= 20000);
+                                if (nonFatalStallTimestamps.length >= 3) {
+                                    console.warn('[ALIVE] 짧은 시간 내 버퍼 스톨 반복 발생, 미디어 복구 강제 실행...');
+                                    nonFatalStallTimestamps = [];
+                                    try {
+                                        hls.recoverMediaError();
+                                    } catch (e) {}
+                                }
                             }
+                            return;
+                        }
+
+                        const isEarlyLoadError = [
+                            Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
+                            Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
+                            Hls.ErrorDetails.LEVEL_LOAD_ERROR,
+                            Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT,
+                        ].includes(data.details);
+
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                if (isEarlyLoadError && !usingProxyFallback) {
+                                    console.warn('[ALIVE] 원본 URL 재생 실패, 프록시 경유로 재시도...');
+                                    usingProxyFallback = true;
+                                    resolveStreamUrl(channel.url).then((proxiedUrl) => {
+                                        if (currentChannel === channel) startHlsPlayback(proxiedUrl);
+                                    });
+                                    return;
+                                }
+                                console.warn('[ALIVE] 네트워크 지연 감지, 스트림 재연결...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.warn('[ALIVE] 미디어 버퍼 스톨 복구 시도...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.error('[ALIVE] 스트림 fatal 오류:', data);
+                                stopPlayback();
+                                if (videoOverlayMsg) {
+                                    videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
+                                    videoOverlayMsg.style.display = 'block';
+                                }
+                                break;
                         }
                     });
                 } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
                     videoElement.src = streamUrl;
+                    startPlaybackWatchdog(streamUrl);
                     videoElement.addEventListener('loadedmetadata', () => {
                         if (isElementVisible(container) || isPipActive()) {
                             videoElement.play().catch(() => {});
