@@ -263,6 +263,9 @@
         // 버그2 수정: hls.js가 에러 자체를 안 내는 "무음 정지"를 잡아내기 위한 워치독 타이머.
         // stopPlayback()에서도 정리해야 해서 모듈 스코프에 둔다.
         let playbackWatchdogTimer = null;
+        // 네이티브(Safari) HLS 재생 경로용 error 리스너 참조. 채널 전환/정지 시
+        // 반드시 해제해야, 재사용되는 videoElement에 리스너가 계속 쌓이지 않는다.
+        let nativeVideoErrorHandler = null;
         let autoHideTimer = null;
         let lastVisibleState = true;
 
@@ -420,6 +423,11 @@
                     hls.destroy();
                 } catch (e) {}
                 hls = null;
+            }
+
+            if (nativeVideoErrorHandler && videoElement) {
+                videoElement.removeEventListener('error', nativeVideoErrorHandler);
+                nativeVideoErrorHandler = null;
             }
 
             if (videoElement) {
@@ -1483,6 +1491,10 @@
             let usingProxyFallback = false;
             // 버그1 수정: fatal이 아닌 에러(버퍼 스톨 등)도 완전히 무시하지 않도록 최근 발생 시각을 추적한다.
             let nonFatalStallTimestamps = [];
+            // 세그먼트(fragment) fatal 에러 횟수. 라이브 DVR 윈도우 밖으로 밀려나는 등
+            // 일시적 히컵으로도 세그먼트 하나가 fatal 처리될 수 있어서, 매니페스트/레벨
+            // 에러와 달리 딱 한 번만 보고 바로 프록시로 전환하지 않고 반복 확인한다.
+            let fragFatalErrorCount = 0;
 
             // 버그2 수정: hls.js가 에러를 아예 내지 않는 "무음 정지"를 잡아내기 위한 워치독.
             // 재생 중(paused 아님)인데 videoElement.currentTime이 일정 시간 이상 전혀 진행되지
@@ -1597,17 +1609,27 @@
                             return;
                         }
 
-                        const isEarlyLoadError = [
+                        const isManifestOrLevelError = [
                             Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
                             Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT,
                             Hls.ErrorDetails.LEVEL_LOAD_ERROR,
                             Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT,
-                            // 매니페스트는 성공했지만 실제 세그먼트(fragment)만 막히는 CDN이 있다
-                            // (티빙 등 다단계 CDN에서 흔함) — 이 경우도 원본 URL이 안 되는 것으로
-                            // 보고 프록시로 넘겨야, 막힌 원본을 startLoad()로 무한 재시도하지 않는다.
+                        ].includes(data.details);
+
+                        // 매니페스트는 성공했지만 실제 세그먼트(fragment)만 막히는 CDN이 있다
+                        // (티빙 등 다단계 CDN에서 흔함) — 이 경우도 원본 URL이 안 되는 것으로
+                        // 보고 프록시로 넘겨야, 막힌 원본을 startLoad()로 무한 재시도하지 않는다.
+                        // 다만 세그먼트 fatal 에러는 라이브 DVR 윈도우 밖으로 밀려나는 등
+                        // "완전히 막힘"이 아니라 "일시적 히컵"으로도 한 번은 날 수 있어서,
+                        // 매니페스트/레벨 에러(사실상 접속 자체가 안 되는 강한 신호)와 달리
+                        // 첫 발생에 바로 전환하지 않고 반복(2회 이상) 확인한다.
+                        const isFragError = [
                             Hls.ErrorDetails.FRAG_LOAD_ERROR,
                             Hls.ErrorDetails.FRAG_LOAD_TIMEOUT,
                         ].includes(data.details);
+                        if (isFragError) fragFatalErrorCount += 1;
+
+                        const isEarlyLoadError = isManifestOrLevelError || (isFragError && fragFatalErrorCount >= 2);
 
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
@@ -1638,6 +1660,38 @@
                         }
                     });
                 } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    // 네이티브(Safari) 경로는 hls.js의 ERROR 이벤트가 없어서, 이전엔 원본이
+                    // 막혀도 워치독(최소 15초)이 감지할 때까지 기다려야 했다. video 엘리먼트
+                    // 자체의 'error' 이벤트로 즉시 반응해서, hls.js 경로와 동일하게 첫 실패
+                    // 시 바로 프록시로 전환하도록 한다. (이전 채널의 리스너가 남지 않도록
+                    // startHlsPlayback 진입 시 및 stopPlayback()에서 항상 먼저 정리한다.)
+                    if (nativeVideoErrorHandler) {
+                        videoElement.removeEventListener('error', nativeVideoErrorHandler);
+                        nativeVideoErrorHandler = null;
+                    }
+
+                    nativeVideoErrorHandler = () => {
+                        if (currentChannel !== channel) return;
+                        if (!(isElementVisible(container) || isPipActive())) return;
+                        console.warn('[ALIVE] 네이티브 재생 오류 감지:', videoElement.error);
+
+                        if (!usingProxyFallback) {
+                            usingProxyFallback = true;
+                            markHostNeedsProxy(channel.url);
+                            resolveStreamUrl(channel.url).then((proxiedUrl) => {
+                                if (currentChannel === channel) startHlsPlayback(proxiedUrl);
+                            });
+                        } else {
+                            console.error('[ALIVE] 네이티브 재생 프록시 경유에도 실패:', videoElement.error);
+                            stopPlayback();
+                            if (videoOverlayMsg) {
+                                videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
+                                videoOverlayMsg.style.display = 'block';
+                            }
+                        }
+                    };
+                    videoElement.addEventListener('error', nativeVideoErrorHandler);
+
                     videoElement.src = streamUrl;
                     startPlaybackWatchdog(streamUrl);
                     videoElement.addEventListener('loadedmetadata', () => {
