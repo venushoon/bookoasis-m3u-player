@@ -1590,6 +1590,17 @@
                     window.__ALIVE_CACHE__.channelHealth = channelHealth;
                     renderChannelList();
                 }
+                // ⚠️ 프록시 필요 여부 학습은 "전환하기로 결정한 순간"이 아니라
+                // "실제로 재생이 성공한 순간"에만 기록한다. 예전엔 전환 결정
+                // 시점에 바로 markHostNeedsProxy()를 불렀는데, 만약 우리
+                // hls-proxy 자체가 그 URL 패턴(예: type=Direct&q=AUTO 같은
+                // 특정 쿼리스트링)에서 403을 내는 버그가 있으면 "프록시도
+                // 안 되는데 프록시가 해법이라고" 잘못 학습해버려서, 같은
+                // 패턴을 쓰는 다른 채널(치지직 등)까지 영구적으로 그 버그에
+                // 다시 걸리게 만든다. 반드시 성공을 확인한 뒤에만 학습한다.
+                if (usingProxyFallback) {
+                    markHostNeedsProxy(channel.url);
+                }
             };
             videoElement.addEventListener('playing', hideConnectingOverlay, { once: true });
 
@@ -1638,11 +1649,11 @@
                         // 아직 원본(무프록시) URL로 재생 중인데 에러 이벤트 하나 없이 멈춰있다면,
                         // hls.js 내부 복구(recoverMediaError/startLoad)로는 못 푸는 CORS성 무음
                         // 정지일 가능성이 높다. 이 경우 매니페스트/레벨 에러와 동일하게 프록시로
-                        // 전환하고, 이 host를 학습해둔다.
+                        // 전환한다. 학습 기록은 여기서 바로 하지 않는다 — 프록시가 실제로
+                        // 재생에 성공했을 때(hideConnectingOverlay)만 기록한다.
                         if (!usingProxyFallback) {
                             console.warn('[ALIVE] 워치독: 원본 URL 무음 정지로 판단, 프록시로 전환 시도...');
                             usingProxyFallback = true;
-                            markHostNeedsProxy(channel.url);
                             resolveStreamUrl(channel.url).then((proxiedUrl) => {
                                 if (myToken === playToken) startHlsPlayback(proxiedUrl);
                             });
@@ -1741,7 +1752,6 @@
                                 if (isEarlyLoadError && !usingProxyFallback) {
                                     console.warn('[ALIVE] 원본 URL 재생 실패, 프록시 경유로 재시도...');
                                     usingProxyFallback = true;
-                                    markHostNeedsProxy(channel.url);
                                     resolveStreamUrl(channel.url).then((proxiedUrl) => {
                                         if (myToken === playToken) startHlsPlayback(proxiedUrl);
                                     });
@@ -1785,7 +1795,6 @@
 
                         if (!usingProxyFallback) {
                             usingProxyFallback = true;
-                            markHostNeedsProxy(channel.url);
                             resolveStreamUrl(channel.url).then((proxiedUrl) => {
                                 if (myToken === playToken) startHlsPlayback(proxiedUrl);
                             });
