@@ -664,25 +664,6 @@
             return cur;
         }
 
-        // hls-proxy가 특정 쿼리스트링 조합(예: type=Direct&q=AUTO)에서 403을 내는
-        // 버그가 확인됐다. 서버 쪽 필터가 값의 대소문자까지 엄격히 비교하는
-        // 단순 문자열 매칭일 가능성을 두고, 프록시로 넘기기 직전에 흔히 쓰이는
-        // 파라미터 값들을 소문자로 정규화해서 우회를 시도해본다. 서버 코드를
-        // 못 고치는 상황에서 시도해볼 수 있는 유일한 클라이언트 측 실험이다.
-        function normalizeQueryForProxy(url) {
-            try {
-                const abs = new URL(url, window.location.origin);
-                ['type', 'q'].forEach((key) => {
-                    if (abs.searchParams.has(key)) {
-                        abs.searchParams.set(key, abs.searchParams.get(key).toLowerCase());
-                    }
-                });
-                return abs.toString();
-            } catch (e) {
-                return url;
-            }
-        }
-
         async function resolveProxyUrl(url) {
             if (!url) return null;
             const real = unwrapProxyUrl(url);
@@ -695,7 +676,7 @@
 
         async function resolveStreamUrl(url) {
             if (!url) return null;
-            const real = normalizeQueryForProxy(unwrapProxyUrl(url));
+            const real = unwrapProxyUrl(url);
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getStreamProxyUrl === 'function') {
                 const streamProxied = await window.BookOasisPlugin.getStreamProxyUrl(real);
                 return streamProxied || real;
@@ -1256,6 +1237,40 @@
             }
         }
 
+        // hls-proxy는 우리 자신의 서버 엔드포인트라, 채널 점검이 원본 fetch 실패 시마다
+        // 프록시로 넘어가는데 이걸 5개 워커가 동시에 하면 서버(또는 앞단 방화벽)의 동시
+        // 연결/레이트 제한에 걸려 403이 날 수 있다. 원본 URL fetch는 각기 다른 외부 CDN을
+        // 두드리니 그대로 5동시로 둬도 되지만, 프록시로 넘어가는 요청만 별도로 더 낮은
+        // 동시성 + 최소 간격으로 스로틀링한다.
+        const PROXY_CHECK_CONCURRENCY = 2;
+        const PROXY_CHECK_MIN_INTERVAL_MS = 200;
+        let proxyCheckActive = 0;
+        let proxyCheckLastStart = 0;
+        const proxyCheckQueue = [];
+
+        function drainProxyCheckQueue() {
+            if (proxyCheckActive >= PROXY_CHECK_CONCURRENCY) return;
+            const job = proxyCheckQueue.shift();
+            if (!job) return;
+            const wait = Math.max(0, proxyCheckLastStart + PROXY_CHECK_MIN_INTERVAL_MS - Date.now());
+            proxyCheckActive++;
+            setTimeout(() => {
+                proxyCheckLastStart = Date.now();
+                job.fn().then(job.resolve, job.reject).finally(() => {
+                    proxyCheckActive--;
+                    drainProxyCheckQueue();
+                });
+            }, wait);
+            drainProxyCheckQueue(); // 남은 동시성 슬롯이 있으면 다음 것도 대기열에 진입시킴
+        }
+
+        function runThrottledProxyCheck(fn) {
+            return new Promise((resolve, reject) => {
+                proxyCheckQueue.push({ fn, resolve, reject });
+                drainProxyCheckQueue();
+            });
+        }
+
         btnCheckHealth.onclick = async () => {
             if (filteredChannels.length === 0) return;
             healthStatusBadge.style.display = 'inline-block';
@@ -1288,8 +1303,11 @@
                 } catch (e) {
                     // 원본 실패 시 프록시로 폴백 검사
                 }
-                const proxied = await resolveStreamUrl(url);
-                return attempt(proxied);
+                // 프록시 폴백은 우리 서버를 두드리는 것이므로 스로틀링된 경로로 실행한다.
+                return runThrottledProxyCheck(async () => {
+                    const proxied = await resolveStreamUrl(url);
+                    return attempt(proxied);
+                });
             }
 
             const workers = Array(5).fill(null).map(async () => {
@@ -1609,17 +1627,6 @@
                     window.__ALIVE_CACHE__.channelHealth = channelHealth;
                     renderChannelList();
                 }
-                // ⚠️ 프록시 필요 여부 학습은 "전환하기로 결정한 순간"이 아니라
-                // "실제로 재생이 성공한 순간"에만 기록한다. 예전엔 전환 결정
-                // 시점에 바로 markHostNeedsProxy()를 불렀는데, 만약 우리
-                // hls-proxy 자체가 그 URL 패턴(예: type=Direct&q=AUTO 같은
-                // 특정 쿼리스트링)에서 403을 내는 버그가 있으면 "프록시도
-                // 안 되는데 프록시가 해법이라고" 잘못 학습해버려서, 같은
-                // 패턴을 쓰는 다른 채널(치지직 등)까지 영구적으로 그 버그에
-                // 다시 걸리게 만든다. 반드시 성공을 확인한 뒤에만 학습한다.
-                if (usingProxyFallback) {
-                    markHostNeedsProxy(channel.url);
-                }
             };
             videoElement.addEventListener('playing', hideConnectingOverlay, { once: true });
 
@@ -1668,11 +1675,11 @@
                         // 아직 원본(무프록시) URL로 재생 중인데 에러 이벤트 하나 없이 멈춰있다면,
                         // hls.js 내부 복구(recoverMediaError/startLoad)로는 못 푸는 CORS성 무음
                         // 정지일 가능성이 높다. 이 경우 매니페스트/레벨 에러와 동일하게 프록시로
-                        // 전환한다. 학습 기록은 여기서 바로 하지 않는다 — 프록시가 실제로
-                        // 재생에 성공했을 때(hideConnectingOverlay)만 기록한다.
+                        // 전환하고, 이 host를 학습해둔다.
                         if (!usingProxyFallback) {
                             console.warn('[ALIVE] 워치독: 원본 URL 무음 정지로 판단, 프록시로 전환 시도...');
                             usingProxyFallback = true;
+                            markHostNeedsProxy(channel.url);
                             resolveStreamUrl(channel.url).then((proxiedUrl) => {
                                 if (myToken === playToken) startHlsPlayback(proxiedUrl);
                             });
@@ -1771,6 +1778,7 @@
                                 if (isEarlyLoadError && !usingProxyFallback) {
                                     console.warn('[ALIVE] 원본 URL 재생 실패, 프록시 경유로 재시도...');
                                     usingProxyFallback = true;
+                                    markHostNeedsProxy(channel.url);
                                     resolveStreamUrl(channel.url).then((proxiedUrl) => {
                                         if (myToken === playToken) startHlsPlayback(proxiedUrl);
                                     });
@@ -1814,6 +1822,7 @@
 
                         if (!usingProxyFallback) {
                             usingProxyFallback = true;
+                            markHostNeedsProxy(channel.url);
                             resolveStreamUrl(channel.url).then((proxiedUrl) => {
                                 if (myToken === playToken) startHlsPlayback(proxiedUrl);
                             });
