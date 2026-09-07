@@ -25,18 +25,6 @@
         // 플레이어가 아무 안내 없이 그냥 멈춘 것처럼 보인다. 기본 CDN 실패 시
         // 대체 CDN으로 한 번 더 시도하고, 그마저 실패하면 사용자에게 알린다.
         function loadScript(src, onFail) {
-            // 같은 URL의 <script> 태그가 이미 DOM에 있으면(SPA 재진입 타이밍이 겹치거나,
-            // 호스트 페이지의 다른 코드가 이미 추가해둔 경우) 중복으로 추가하지 않고
-            // 그 태그의 로드 결과를 그대로 기다린다.
-            const existing = document.querySelector(`script[src="${src}"]`);
-            if (existing) {
-                if (window.Hls) { callback(); return; }
-                existing.addEventListener('load', () => {
-                    if (window.Hls) callback(); else onFail();
-                });
-                existing.addEventListener('error', onFail);
-                return;
-            }
             const script = document.createElement('script');
             script.src = src;
             script.onload = () => {
@@ -249,7 +237,7 @@
         const healthStatusBadge = document.getElementById('health-status-badge');
         const loadingSpinner = document.getElementById('loading-spinner');
 
-        let videoElement = document.getElementById('video-element');
+        const videoElement = document.getElementById('video-element');
         const playerWrapper = document.querySelector('.m3u-player-wrapper');
         const videoOverlayMsg = document.getElementById('video-overlay-msg');
         const btnFavCurrent = document.getElementById('btn-fav-current');
@@ -278,19 +266,6 @@
         // 네이티브(Safari) HLS 재생 경로용 error 리스너 참조. 채널 전환/정지 시
         // 반드시 해제해야, 재사용되는 videoElement에 리스너가 계속 쌓이지 않는다.
         let nativeVideoErrorHandler = null;
-        // 채널을 빠르게 연달아 전환할 때, 이전 채널에서 파생된 낡은 비동기 콜백(프록시 재시도
-        // 등)이 그 사이 새로 시작된 채널의 상태를 잘못 건드리는 걸 막기 위한 토큰.
-        // currentChannel !== channel 비교만으로는, 같은 채널 객체를 연달아 두 번 고르는
-        // 경우(더블클릭 등) 낡은 시도를 걸러내지 못한다 — playChannel()이 호출될 때마다
-        // 이 값을 1씩 증가시키고, 그 시점의 값을 각 재생 시도가 스냅샷으로 들고 있다가
-        // 비동기 콜백이 돌아왔을 때 지금 값과 비교해서 낡았으면 무시한다.
-        let playToken = 0;
-        // 직전 채널이 프록시까지 실패해서 최종적으로 오프라인 판정이 났을 때 true로 세팅.
-        // 브라우저에 따라 <video>의 MediaSource가 한 번 fatal 상태에 빠지면 같은 엘리먼트를
-        // 재사용해도 디코더가 복구되지 않는 경우가 있어(재생 실패한 채널을 고른 뒤로 원래
-        // 잘 나오던 채널까지 안 나오는 증상), 실제 교체는 다음 playChannel() 시작 시점에
-        // 그 채널의 어떤 재생 시도보다도 먼저 동기적으로 수행한다(recreateVideoElement 참고).
-        let videoNeedsRecreate = false;
         let autoHideTimer = null;
         let lastVisibleState = true;
 
@@ -462,43 +437,6 @@
             }
         }
 
-        // leavepictureinpicture/resize/waiting 리스너를 지금의 videoElement에 붙인다.
-        // 초기 1회 호출과, recreateVideoElement()로 노드를 교체한 직후 다시 붙일 때 둘 다 쓴다.
-        function bindVideoElementListeners() {
-            videoElement.addEventListener('leavepictureinpicture', handleVideoLeavePip);
-            videoElement.addEventListener('resize', handleVideoResize);
-            videoElement.addEventListener('waiting', handleVideoWaiting);
-        }
-
-        // 브라우저에 따라 <video>에 붙은 MediaSource가 한 번 fatal 상태(네트워크 오류로
-        // 프록시까지 실패해 완전히 오프라인 판정이 난 경우 등)에 빠지면, destroy()/
-        // removeAttribute('src')/load()로 우리 쪽 상태를 다 정리해도 브라우저 내부 디코더
-        // 파이프라인 자체는 복구되지 않아 같은 엘리먼트로는 계속 재생에 실패하는 경우가
-        // 있다("실패한 채널을 고른 뒤로 잘 나오던 다른 채널도 안 나오고 새로고침해야 풀리는"
-        // 증상). 최종 실패가 확정되면 <video> 엘리먼트 자체를 새 노드로 교체해 다음 채널은
-        // 깨끗한 디코더로 시작하게 한다. 네이티브 PIP 중이면 노드를 바꾸면 그 세션이
-        // 끊어지므로 건드리지 않는다(다음 기회에 다시 시도됨).
-        function recreateVideoElement() {
-            if (!videoElement || !videoElement.parentNode) return;
-            if (isPipActive()) return;
-
-            const parent = videoElement.parentNode;
-            const nextSibling = videoElement.nextSibling;
-            const wasMuted = videoElement.muted;
-
-            const fresh = document.createElement('video');
-            fresh.id = videoElement.id;
-            fresh.className = videoElement.className;
-            fresh.controls = videoElement.controls;
-            fresh.playsInline = true;
-            fresh.muted = wasMuted;
-
-            parent.insertBefore(fresh, nextSibling);
-            parent.removeChild(videoElement);
-            videoElement = fresh;
-            bindVideoElementListeners();
-        }
-
         function resetToInitialUI() {
             stopPlayback();
             currentChannel = null;
@@ -617,7 +555,7 @@
                 }
             }, 50);
         }
-        bindVideoElementListeners();
+        videoElement.addEventListener('leavepictureinpicture', handleVideoLeavePip);
 
         function handleNavChange() {
             if (!isPipActive() && !isElementVisible(container)) {
@@ -919,34 +857,6 @@
             }
         };
 
-        // 소스 저장 API(/api/media/books/0/apply-metadata)는 서버에서 관리자 권한을 요구한다.
-        // 예전에는 저장 버튼이 항상 활성 상태라, 일반 사용자는 값을 입력하고 저장을 눌러야만
-        // (그것도 그 시점에야) 권한이 없다는 걸 알 수 있었다. 이미 admin_required로 보호된
-        // 기존 엔드포인트 하나를 가벼운 프로브로 재사용해 미리 판별해서, 버튼을 비활성화하고
-        // 이유를 안내한다. 판별 자체가 실패(네트워크 오류 등)하면 기존 동작을 유지하기 위해
-        // 기본값은 true(허용)로 둔다 — 오탐으로 정상 관리자를 막는 것보다 안전한 쪽을 택함.
-        let isAdminUser = true;
-        async function detectAdminAccess() {
-            try {
-                const res = await fetch('/api/media/metadata/plugins/manage', { method: 'GET' });
-                isAdminUser = !(res.status === 401 || res.status === 403);
-            } catch (e) {
-                // 판별 자체가 실패했다면 기존 동작(버튼 노출)을 유지한다.
-            }
-            applyAdminUiState();
-        }
-
-        function applyAdminUiState() {
-            if (btnOpenSources) {
-                btnOpenSources.disabled = !isAdminUser;
-                btnOpenSources.title = isAdminUser ? '' : '소스 설정 변경은 관리자 계정만 가능합니다.';
-            }
-            if (btnModalSave) {
-                btnModalSave.disabled = !isAdminUser;
-                btnModalSave.title = isAdminUser ? '' : '설정 저장은 관리자 계정만 가능합니다.';
-            }
-        }
-
         async function refreshAllSources(forceRefresh = false) {
             if (!forceRefresh && window.__ALIVE_CACHE__.loaded && window.__ALIVE_CACHE__.channels.length > 0) {
                 allChannels = window.__ALIVE_CACHE__.channels;
@@ -1237,40 +1147,6 @@
             }
         }
 
-        // hls-proxy는 우리 자신의 서버 엔드포인트라, 채널 점검이 원본 fetch 실패 시마다
-        // 프록시로 넘어가는데 이걸 5개 워커가 동시에 하면 서버(또는 앞단 방화벽)의 동시
-        // 연결/레이트 제한에 걸려 403이 날 수 있다. 원본 URL fetch는 각기 다른 외부 CDN을
-        // 두드리니 그대로 5동시로 둬도 되지만, 프록시로 넘어가는 요청만 별도로 더 낮은
-        // 동시성 + 최소 간격으로 스로틀링한다.
-        const PROXY_CHECK_CONCURRENCY = 2;
-        const PROXY_CHECK_MIN_INTERVAL_MS = 200;
-        let proxyCheckActive = 0;
-        let proxyCheckLastStart = 0;
-        const proxyCheckQueue = [];
-
-        function drainProxyCheckQueue() {
-            if (proxyCheckActive >= PROXY_CHECK_CONCURRENCY) return;
-            const job = proxyCheckQueue.shift();
-            if (!job) return;
-            const wait = Math.max(0, proxyCheckLastStart + PROXY_CHECK_MIN_INTERVAL_MS - Date.now());
-            proxyCheckActive++;
-            setTimeout(() => {
-                proxyCheckLastStart = Date.now();
-                job.fn().then(job.resolve, job.reject).finally(() => {
-                    proxyCheckActive--;
-                    drainProxyCheckQueue();
-                });
-            }, wait);
-            drainProxyCheckQueue(); // 남은 동시성 슬롯이 있으면 다음 것도 대기열에 진입시킴
-        }
-
-        function runThrottledProxyCheck(fn) {
-            return new Promise((resolve, reject) => {
-                proxyCheckQueue.push({ fn, resolve, reject });
-                drainProxyCheckQueue();
-            });
-        }
-
         btnCheckHealth.onclick = async () => {
             if (filteredChannels.length === 0) return;
             healthStatusBadge.style.display = 'inline-block';
@@ -1303,11 +1179,8 @@
                 } catch (e) {
                     // 원본 실패 시 프록시로 폴백 검사
                 }
-                // 프록시 폴백은 우리 서버를 두드리는 것이므로 스로틀링된 경로로 실행한다.
-                return runThrottledProxyCheck(async () => {
-                    const proxied = await resolveStreamUrl(url);
-                    return attempt(proxied);
-                });
+                const proxied = await resolveStreamUrl(url);
+                return attempt(proxied);
             }
 
             const workers = Array(5).fill(null).map(async () => {
@@ -1497,12 +1370,12 @@
         // LEVEL_SWITCHED만으로는 해상도를 못 잡는 경우가 있다. 실제 디코딩된
         // 프레임 크기가 바뀔 때 브라우저가 쏘는 네이티브 'resize' 이벤트를
         // 보조 수단으로 쓰면 재생 방식(hls.js/네이티브)과 무관하게 항상 동작한다.
-        // videoElement는 채널 전환 시에는 재사용되는 고정 요소지만, 최종 실패 후에는
-        // recreateVideoElement()로 교체될 수 있다 — 리스너 등록은 bindVideoElementListeners()가
-        // 초기 1회 + 교체 시마다 담당한다(여기서 개별로 등록하면 교체 후 리스너가 안 붙는다).
+        // videoElement는 채널 전환 시에도 재사용되는 고정 요소이므로 리스너는
+        // 여기서 한 번만 등록한다(채널마다 등록하면 계속 누적됨).
         function handleVideoResize() {
             if (currentChannel) updateResolutionBadge(videoElement.videoHeight);
         }
+        videoElement.addEventListener('resize', handleVideoResize);
 
         function updateCurrentEpgDisplay(channel) {
             const epgInfo = getEpgInfo(channel);
@@ -1588,21 +1461,7 @@
         async function playChannel(channel) {
             if (!isElementVisible(container) && !isPipActive()) return;
 
-            // 직전 채널이 최종 실패(프록시까지 실패)했던 경우, 그 실패 처리 코드가 세워둔
-            // videoNeedsRecreate 플래그를 여기서 — 이번 채널의 그 어떤 재생 시도보다도 먼저 —
-            // 동기적으로 처리한다. 순서를 여기서 강제해서 "실패 처리 중 비동기로 교체하다가
-            // 그 사이 다음 채널이 낡은 엘리먼트를 먼저 잡아버리는" 레이스가 생기지 않는다.
-            if (videoNeedsRecreate) {
-                videoNeedsRecreate = false;
-                recreateVideoElement();
-            }
-
             currentChannel = channel;
-            // 채널을 빠르게 연달아 전환할 때, 이전 채널에서 파생된 낡은 비동기 콜백(프록시
-            // 재시도 등)이 새로 시작된 이번 채널의 상태를 잘못 건드리지 않도록 이번 재생
-            // 시도만의 고유 토큰을 발급한다. 아래 각 콜백은 currentChannel 비교 대신(또는
-            // 함께) 이 토큰이 여전히 최신인지로 낡은 시도 여부를 판별한다.
-            const myToken = ++playToken;
             window.__ALIVE_CACHE__.lastChannel = channel;
             localStorage.setItem(LS.lastUrl, channel.url);
 
@@ -1618,7 +1477,6 @@
             renderChannelList();
 
             const hideConnectingOverlay = () => {
-                if (myToken !== playToken) return;
                 if (videoOverlayMsg && videoOverlayMsg.style.display !== 'none') {
                     videoOverlayMsg.style.display = 'none';
                 }
@@ -1652,7 +1510,7 @@
                 let lastProgressAt = Date.now();
 
                 playbackWatchdogTimer = setInterval(() => {
-                    if (myToken !== playToken) {
+                    if (currentChannel !== channel) {
                         clearInterval(playbackWatchdogTimer);
                         playbackWatchdogTimer = null;
                         return;
@@ -1681,7 +1539,7 @@
                             usingProxyFallback = true;
                             markHostNeedsProxy(channel.url);
                             resolveStreamUrl(channel.url).then((proxiedUrl) => {
-                                if (myToken === playToken) startHlsPlayback(proxiedUrl);
+                                if (currentChannel === channel) startHlsPlayback(proxiedUrl);
                             });
                             return;
                         }
@@ -1691,7 +1549,7 @@
                                 hls.recoverMediaError();
                             } catch (e) {}
                             hls.startLoad();
-                        } else if (myToken === playToken) {
+                        } else if (currentChannel === channel) {
                             startHlsPlayback(streamUrl);
                         }
                     }
@@ -1720,13 +1578,13 @@
                     });
 
                     hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
-                        if (myToken !== playToken) return;
+                        if (currentChannel !== channel) return;
                         const level = hls.levels && hls.levels[data.level];
                         updateResolutionBadge(level ? level.height : null);
                     });
 
                     hls.on(Hls.Events.ERROR, (event, data) => {
-                        if (myToken !== playToken) return;
+                        if (currentChannel !== channel) return;
                         if (!(isElementVisible(container) || isPipActive())) return;
 
                         if (!data.fatal) {
@@ -1780,7 +1638,7 @@
                                     usingProxyFallback = true;
                                     markHostNeedsProxy(channel.url);
                                     resolveStreamUrl(channel.url).then((proxiedUrl) => {
-                                        if (myToken === playToken) startHlsPlayback(proxiedUrl);
+                                        if (currentChannel === channel) startHlsPlayback(proxiedUrl);
                                     });
                                     return;
                                 }
@@ -1794,9 +1652,6 @@
                             default:
                                 console.error('[ALIVE] 스트림 fatal 오류:', data);
                                 stopPlayback();
-                                // 이 채널은 완전히 실패한 것으로 확정 — 브라우저에 따라 디코더가
-                                // 복구되지 않는 경우가 있으니 다음 채널은 새 <video> 노드로 시작한다.
-                                videoNeedsRecreate = true;
                                 if (videoOverlayMsg) {
                                     videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
                                     videoOverlayMsg.style.display = 'block';
@@ -1816,7 +1671,7 @@
                     }
 
                     nativeVideoErrorHandler = () => {
-                        if (myToken !== playToken) return;
+                        if (currentChannel !== channel) return;
                         if (!(isElementVisible(container) || isPipActive())) return;
                         console.warn('[ALIVE] 네이티브 재생 오류 감지:', videoElement.error);
 
@@ -1824,14 +1679,11 @@
                             usingProxyFallback = true;
                             markHostNeedsProxy(channel.url);
                             resolveStreamUrl(channel.url).then((proxiedUrl) => {
-                                if (myToken === playToken) startHlsPlayback(proxiedUrl);
+                                if (currentChannel === channel) startHlsPlayback(proxiedUrl);
                             });
                         } else {
                             console.error('[ALIVE] 네이티브 재생 프록시 경유에도 실패:', videoElement.error);
                             stopPlayback();
-                            // hls.js 경로와 동일하게, 프록시까지 실패한 최종 실패이므로
-                            // 다음 채널은 새 <video> 노드로 시작한다.
-                            videoNeedsRecreate = true;
                             if (videoOverlayMsg) {
                                 videoOverlayMsg.textContent = '스트림이 일시 중단되었습니다. [재연결]을 눌러주세요.';
                                 videoOverlayMsg.style.display = 'block';
@@ -1863,7 +1715,7 @@
                 usingProxyFallback = true;
                 console.warn('[ALIVE] 이 host는 최근 프록시가 필요했던 것으로 학습됨, 프록시로 바로 시작...');
                 resolveStreamUrl(channel.url).then((proxiedUrl) => {
-                    if (myToken === playToken) startHlsPlayback(proxiedUrl);
+                    if (currentChannel === channel) startHlsPlayback(proxiedUrl);
                 });
             } else {
                 startHlsPlayback(channel.url);
@@ -1875,6 +1727,7 @@
                 hls.startLoad();
             }
         }
+        videoElement.addEventListener('waiting', handleVideoWaiting);
 
         function moveToAdjacentChannel(direction) {
             if (!currentChannel || filteredChannels.length === 0) return;
@@ -1962,7 +1815,6 @@
             loadFavorites();
             refreshAllSources(false);
         })();
-        detectAdminAccess(); // 결과가 오는 대로 비동기로 버튼 상태를 갱신 (초기 로딩을 막지 않음)
     }
 
     ensureHlsLoaded(initM3UPlayer);

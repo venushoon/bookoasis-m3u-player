@@ -541,7 +541,7 @@
 
 /* 모달 다이얼로그 */
 .m3u-modal-overlay {
-    position: fixed;
+    position: absolute;
     top: 0;
     left: 0;
     width: 100%;
