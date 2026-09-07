@@ -664,6 +664,25 @@
             return cur;
         }
 
+        // hls-proxy가 특정 쿼리스트링 조합(예: type=Direct&q=AUTO)에서 403을 내는
+        // 버그가 확인됐다. 서버 쪽 필터가 값의 대소문자까지 엄격히 비교하는
+        // 단순 문자열 매칭일 가능성을 두고, 프록시로 넘기기 직전에 흔히 쓰이는
+        // 파라미터 값들을 소문자로 정규화해서 우회를 시도해본다. 서버 코드를
+        // 못 고치는 상황에서 시도해볼 수 있는 유일한 클라이언트 측 실험이다.
+        function normalizeQueryForProxy(url) {
+            try {
+                const abs = new URL(url, window.location.origin);
+                ['type', 'q'].forEach((key) => {
+                    if (abs.searchParams.has(key)) {
+                        abs.searchParams.set(key, abs.searchParams.get(key).toLowerCase());
+                    }
+                });
+                return abs.toString();
+            } catch (e) {
+                return url;
+            }
+        }
+
         async function resolveProxyUrl(url) {
             if (!url) return null;
             const real = unwrapProxyUrl(url);
@@ -676,7 +695,7 @@
 
         async function resolveStreamUrl(url) {
             if (!url) return null;
-            const real = unwrapProxyUrl(url);
+            const real = normalizeQueryForProxy(unwrapProxyUrl(url));
             if (window.BookOasisPlugin && typeof window.BookOasisPlugin.getStreamProxyUrl === 'function') {
                 const streamProxied = await window.BookOasisPlugin.getStreamProxyUrl(real);
                 return streamProxied || real;
