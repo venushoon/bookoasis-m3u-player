@@ -59,9 +59,11 @@
             }
         }
 
-        loadScript('https://cdn.jsdelivr.net/npm/hls.js@latest', () => {
+        // 버전은 고정한다 — @latest는 예고 없는 파괴적 변경이나 CDN 쪽 사고가
+        // 그대로 플레이어 장애가 되고, 어떤 코드가 실행될지 재현도 안 된다.
+        loadScript('https://cdn.jsdelivr.net/npm/hls.js@1.6.13', () => {
             console.warn('[ALIVE Player] 기본 CDN에서 hls.js 로드 실패, 대체 CDN으로 재시도...');
-            loadScript('https://unpkg.com/hls.js@latest', showLoadFailure);
+            loadScript('https://unpkg.com/hls.js@1.6.13', showLoadFailure);
         });
     }
 
@@ -285,6 +287,11 @@
         // 이 값을 1씩 증가시키고, 그 시점의 값을 각 재생 시도가 스냅샷으로 들고 있다가
         // 비동기 콜백이 돌아왔을 때 지금 값과 비교해서 낡았으면 무시한다.
         let playToken = 0;
+        // playChannel()이 채널마다 거는 'playing' once 리스너의 현재 등록분.
+        // 재생이 시작되지 못한 채 채널만 계속 바꾸면, 발화하지 않은 once 리스너가
+        // videoElement에 계속 쌓이므로, 새 채널을 걸기 전에 이전 등록분을 먼저 뗀다.
+        let playingOverlayHandler = null;
+        let playingOverlayElement = null;
         // 직전 채널이 프록시까지 실패해서 최종적으로 오프라인 판정이 났을 때 true로 세팅.
         // 브라우저에 따라 <video>의 MediaSource가 한 번 fatal 상태에 빠지면 같은 엘리먼트를
         // 재사용해도 디코더가 복구되지 않는 경우가 있어(재생 실패한 채널을 고른 뒤로 원래
@@ -394,7 +401,10 @@
                 e.stopPropagation();
             }
             clearIdleHideTimer();
-            isSidebarCollapsed = !isSidebarCollapsed;
+            // 유휴 자동 숨김(scheduleIdleHide)은 상태 변수를 바꾸지 않고 클래스만으로
+            // 숨기므로, 변수 기준으로 뒤집으면 "숨겨져 있는데 한 번 눌러도 반응 없는"
+            // 상태 어긋남이 생긴다. 토글은 지금 화면에 보이는 상태를 기준으로 뒤집는다.
+            isSidebarCollapsed = !container.classList.contains('sidebar-collapsed');
             updateSidebarUI(true);
             if (!isSidebarCollapsed) scheduleIdleHide();
         }
@@ -536,6 +546,7 @@
             window.removeEventListener('popstate', handleNavChange);
             window.removeEventListener('hashchange', handleNavChange);
             window.removeEventListener('beforeunload', cleanupAll);
+            document.removeEventListener('click', handleDocumentNavClick);
             window.removeEventListener('resize', adjustContainerHeight);
             window.removeEventListener('orientationchange', adjustContainerHeight);
             if (containerResizeObserver) containerResizeObserver.disconnect();
@@ -629,12 +640,16 @@
         window.addEventListener('hashchange', handleNavChange);
         window.addEventListener('beforeunload', cleanupAll);
 
-        document.addEventListener('click', (e) => {
+        // document 레벨 리스너는 cleanupAll()에서 반드시 해제할 수 있도록
+        // 이름 있는 함수로 등록한다 — 익명 함수로 붙이면 SPA 재진입 때마다
+        // 해제 불가능한 리스너가 하나씩 누적된다.
+        function handleDocumentNavClick(e) {
             const navTarget = e.target.closest('a, button, [data-category], [data-tab], .sidebar-item, .nav-link');
             if (navTarget && !container.contains(navTarget)) {
                 setTimeout(handleNavChange, 50);
             }
-        });
+        }
+        document.addEventListener('click', handleDocumentNavClick);
 
         // 이미 우리 호스트의 프록시(/api/webview/hls-proxy 또는 /api/webview/proxy)로
         // 한 번 감싸진 URL인지 확인한다. M3U 소스가 이미 프록시로 감싼 링크를 줄 때,
@@ -1061,8 +1076,18 @@
                         currentItem.logo = '';
                     }
 
-                    const nameParts = line.split(',');
-                    currentItem.name = nameParts.length > 1 ? nameParts.slice(1).join(',').trim() : (currentItem.tvgName || '이름 없는 채널');
+                    // 채널명은 속성부 뒤의 첫 쉼표부터 끝까지다. 단, 속성값 안에 든
+                    // 쉼표(예: group-title="뉴스,속보")를 구분자로 오인하면 이름이
+                    // 깨지므로, 따옴표 밖에 있는 첫 쉼표를 찾는다.
+                    let inQuotes = false;
+                    let commaIdx = -1;
+                    for (let k = 0; k < line.length; k++) {
+                        const ch = line[k];
+                        if (ch === '"') inQuotes = !inQuotes;
+                        else if (ch === ',' && !inQuotes) { commaIdx = k; break; }
+                    }
+                    currentItem.name = commaIdx >= 0 ? line.slice(commaIdx + 1).trim() : '';
+                    if (!currentItem.name) currentItem.name = currentItem.tvgName || '이름 없는 채널';
                 } else if (!line.startsWith('#') && currentItem) {
                     currentItem.url = line;
                     channels.push(currentItem);
@@ -1182,6 +1207,14 @@
                     }
                 }
             }
+            // queryEpg()는 배열이 시간순이라는 전제(findIndex + 다음 원소 = 다음 방송)로
+            // 동작한다. XMLTV 원본의 programme 순서가 채널별로 시간순이라는 보장은
+            // 없으므로(채널끼리 섞여 있거나 소스가 정렬 없이 내보내는 경우) 여기서
+            // 채널별 시작 시각 순으로 정렬해 그 전제를 보장한다. 별칭 키들은 같은
+            // 배열을 공유하므로 Set으로 중복 정렬을 피한다.
+            Array.from(new Set(Object.values(resultData))).forEach((list) => {
+                list.sort((a, b) => a.start - b.start);
+            });
             return resultData;
         }
 
@@ -1219,7 +1252,7 @@
 
             if (!programList || programList.length === 0) return null;
             const now = new Date();
-            const nowIndex = programList.findIndex(p => now >= p.start && now <= p.stop);
+            const nowIndex = programList.findIndex(p => now >= p.start && now < p.stop);
             if (nowIndex === -1) return null;
             return {
                 now: programList[nowIndex],
@@ -1256,7 +1289,15 @@
                     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
                     try {
                         const resp = await fetch(targetUrl, { method: 'GET', signal: controller.signal });
-                        return (resp.ok || resp.status === 206);
+                        const ok = (resp.ok || resp.status === 206);
+                        // 상태 확인만 하면 되므로 본문은 즉시 끊는다. 끊지 않으면
+                        // 라이브 스트림(TS 등) URL은 응답이 끝나지 않아 연결이
+                        // 열린 채로 대역폭을 계속 먹고, 점검 워커 5개가 동시에
+                        // 채널 수만큼 스트림을 당기는 꼴이 된다.
+                        if (resp.body) {
+                            try { resp.body.cancel(); } catch (e) { /* ignore */ }
+                        }
+                        return ok;
                     } finally {
                         clearTimeout(timeoutId);
                     }
@@ -1580,7 +1621,14 @@
             updateCurrentEpgDisplay(channel);
             renderChannelList();
 
+            if (playingOverlayHandler && playingOverlayElement) {
+                playingOverlayElement.removeEventListener('playing', playingOverlayHandler);
+                playingOverlayHandler = null;
+                playingOverlayElement = null;
+            }
             const hideConnectingOverlay = () => {
+                playingOverlayHandler = null;
+                playingOverlayElement = null;
                 if (myToken !== playToken) return;
                 if (videoOverlayMsg && videoOverlayMsg.style.display !== 'none') {
                     videoOverlayMsg.style.display = 'none';
@@ -1591,6 +1639,8 @@
                     renderChannelList();
                 }
             };
+            playingOverlayHandler = hideConnectingOverlay;
+            playingOverlayElement = videoElement;
             videoElement.addEventListener('playing', hideConnectingOverlay, { once: true });
 
             let usingProxyFallback = false;

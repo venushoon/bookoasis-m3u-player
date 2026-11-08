@@ -18,8 +18,10 @@ plugins/metadata/<id>/(플러그인 코드, 업데이트 시 통째로 교체됨
 plugins/data/<id>/(플러그인 데이터, 재설치·업데이트에도 보존됨) 관례를 따른다.
 
 동작 방식:
-- get_dashboard_data(): playlist.json을 읽어 반환한다. 파일이 없으면 빈 설정을
-  반환한다(프런트가 로컬 localStorage 백업값으로 폴백 처리).
+- get_dashboard_data(): playlist.json을 읽어 반환한다. 파일이 없으면
+  config를 None으로 반환한다(프런트가 이를 "서버 설정 없음"으로 보고 로컬
+  localStorage 백업값으로 폴백 처리한다 — 기본값을 config로 내려보내면
+  프런트가 서버에 저장된 설정으로 오인해 로컬 백업을 빈 값으로 덮어쓴다).
 - apply(action="save_settings"): 카테고리탭의 "⚙️ 소스 관리" 모달에서 저장을
   누르면 이 액션이 호출되어 playlist.json에 통째로 저장한다.
 
@@ -34,6 +36,7 @@ plugins/data/<id>/(플러그인 데이터, 재설치·업데이트에도 보존�
 
 import json
 import os
+import tempfile
 
 from plugins.metadata.base import BaseMetadataProvider
 
@@ -74,6 +77,59 @@ DEFAULT_CONFIG = {
     "playbackMode": "smooth",
     "autoResume": False,
 }
+
+
+# 저장 검증 상한 — apply()는 네트워크 너머에서 호출되는 진입점이라, 검증 없이
+# 통째로 저장하면 비정상적으로 크거나 깨진 JSON이 그대로 설정 파일이 된다.
+_MAX_SOURCES = 100
+_MAX_URL_LEN = 4096
+_MAX_NAME_LEN = 200
+_ALLOWED_PLAYBACK_MODES = {"smooth", "standard", "low_latency"}
+
+
+def _sanitize_config(config):
+    """알려진 키만, 기대하는 타입으로 정규화한 설정 dict를 돌려준다.
+
+    모르는 키는 버리고, 타입이 어긋난 항목은 기본값으로 대체한다. 소스 목록은
+    url이 있는 항목만 남긴다.
+    """
+    clean = dict(DEFAULT_CONFIG)
+
+    sources = config.get("sources")
+    if isinstance(sources, list):
+        cleaned_sources = []
+        for idx, src in enumerate(sources[:_MAX_SOURCES]):
+            if not isinstance(src, dict):
+                continue
+            url = src.get("url")
+            if not isinstance(url, str) or not url.strip():
+                continue
+            name = src.get("name")
+            sid = src.get("id")
+            cleaned_sources.append({
+                "id": (str(sid)[:64] if sid is not None and str(sid) else f"src_{idx}"),
+                "name": (name.strip()[:_MAX_NAME_LEN]
+                         if isinstance(name, str) and name.strip() else "이름없음"),
+                "url": url.strip()[:_MAX_URL_LEN],
+            })
+        clean["sources"] = cleaned_sources
+
+    for key in ("epgUrl1", "epgUrl2"):
+        value = config.get(key)
+        if isinstance(value, str):
+            clean[key] = value.strip()[:_MAX_URL_LEN]
+
+    interval = config.get("epgInterval")
+    if interval is not None and str(interval).strip().isdigit():
+        clean["epgInterval"] = str(interval).strip()
+
+    if config.get("playbackMode") in _ALLOWED_PLAYBACK_MODES:
+        clean["playbackMode"] = config["playbackMode"]
+
+    if isinstance(config.get("autoResume"), bool):
+        clean["autoResume"] = config["autoResume"]
+
+    return clean
 
 
 def _read_local_version():
@@ -130,30 +186,46 @@ class M3UPlayerPlugin(BaseMetadataProvider):
     def _load_config_from_file():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except FileNotFoundError:
             return None
         except (json.JSONDecodeError, OSError):
             # 파일이 손상됐거나 읽기 실패 - 기본값으로 처리
             return None
+        # JSON은 유효해도 dict가 아닌 값(리스트 등)이면 설정으로 쓸 수 없다.
+        return data if isinstance(data, dict) else None
 
     @staticmethod
     def _save_config_to_file(config):
         os.makedirs(DATA_DIR, exist_ok=True)
-        tmp_path = CONFIG_FILE + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-        # 원자적 교체: 쓰는 도중 프로세스가 죽어도 기존 파일이 반쪽짜리로
-        # 깨지지 않도록 임시 파일에 다 쓴 뒤 한 번에 이름을 바꾼다.
-        os.replace(tmp_path, CONFIG_FILE)
+        # 임시 경로는 저장마다 고유하게 만든다 — 고정된 ".tmp" 경로를 쓰면
+        # 저장이 겹칠 때(여러 기기에서 동시 저장 등) 서로의 임시 파일을
+        # 덮어써 깨진 JSON이 교체될 수 있다.
+        fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, prefix="playlist.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            # 원자적 교체: 쓰는 도중 프로세스가 죽어도 기존 파일이 반쪽짜리로
+            # 깨지지 않도록 임시 파일에 다 쓴 뒤 한 번에 이름을 바꾼다.
+            os.replace(tmp_path, CONFIG_FILE)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     # ------------------------------------------------------------------
     # 카테고리탭 데이터 조회 (GET .../widgets/bookoasis_m3u_player/data?type=...)
     # ------------------------------------------------------------------
     def get_dashboard_data(self, db_type, limit=10):
+        # 파일이 없으면 config=None 그대로 내려보낸다. 여기서 기본값으로
+        # 채워 보내면 프런트(loadConfigFromServer)가 "서버 설정이 있다"고
+        # 판단해 applyServerConfigToLocalStorage로 로컬 백업을 빈 값으로
+        # 덮어써 버린다 — 파일이 없을 때만 로컬 폴백이 살아남는 구조다.
+        # (파일이 실제로 있으면, 비어 있는 설정을 저장한 경우까지 포함해
+        # 파일 내용 그대로가 정본이다.)
         config = self._load_config_from_file()
-        if config is None:
-            config = dict(DEFAULT_CONFIG)
 
         return {
             "success": True,
@@ -177,6 +249,7 @@ class M3UPlayerPlugin(BaseMetadataProvider):
             if not isinstance(config, dict):
                 return False, "저장할 설정 정보가 없습니다."
 
+            config = _sanitize_config(config)
             try:
                 self._save_config_to_file(config)
             except OSError as e:
