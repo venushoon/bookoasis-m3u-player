@@ -158,6 +158,20 @@
                         <span class="m3u-checkbox-desc">체크를 해제하면 다른 메뉴에서 돌아왔을 때 대기 상태의 초기 화면으로 시작합니다.</span>
                     </div>
                 </div>
+
+                <!-- 5. 스트림 프록시 (서버 경유 중계) -->
+                <div class="m3u-modal-section">
+                    <h4 class="m3u-modal-section-title"><i class="fa-solid fa-server fas fa-server"></i> 스트림 프록시 (서버 경유 중계)</h4>
+                    <div class="m3u-form-group">
+                        <label>스트림 전송 방식</label>
+                        <select id="cfg-stream-proxy-mode" class="m3u-select">
+                            <option value="auto" selected>자동 — 직접 재생이 실패할 때만 서버 경유</option>
+                            <option value="always">항상 서버 경유 — 모든 스트림을 BookOasis 서버가 중계</option>
+                            <option value="off">사용 안 함 — 브라우저 직접 재생만</option>
+                        </select>
+                        <span class="m3u-checkbox-desc">"항상 서버 경유"에서는 브라우저가 스트림 서버에 직접 요청하지 않고 BookOasis 서버가 대신 받아서 중계하므로, 브라우저 CORS·403으로 직접 재생이 막히는 채널에 유효합니다. 대신 모든 재생 트래픽이 서버 회선을 거치니 서버 부하와 대역폭 사용이 늘어납니다.</span>
+                    </div>
+                </div>
             </div>
 
             <div class="m3u-modal-footer">

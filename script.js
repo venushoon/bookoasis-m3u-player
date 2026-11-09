@@ -125,6 +125,7 @@
         sidebarCollapsed: LS_PREFIX + 'sidebar_collapsed',
         playbackMode: LS_PREFIX + 'playback_mode',
         autoResume: LS_PREFIX + 'autoresume',
+        streamProxyMode: LS_PREFIX + 'stream_proxy_mode',
         lastUrl: LS_PREFIX + 'last_url',
         // "원본 URL이 안 되고 프록시가 필요했다"고 학습한 기록.
         // { "host::소스구분값": 마지막으로 확인된 시각(ms) } 형태. host만 쓰지 않는
@@ -242,6 +243,7 @@
         const cfgEpgInterval = document.getElementById('cfg-epg-interval');
         const cfgPlaybackMode = document.getElementById('cfg-playback-mode');
         const cfgAutoResume = document.getElementById('cfg-auto-resume');
+        const cfgStreamProxyMode = document.getElementById('cfg-stream-proxy-mode');
 
         const sourceSelect = document.getElementById('m3u-source-select');
         const groupSelect = document.getElementById('m3u-group-select');
@@ -771,6 +773,22 @@
             saveProxyRequiredMap(map);
         }
 
+        // ── 스트림 프록시 모드 (설정 > 스트림 프록시) ─────────────────────
+        // auto:   기존 전략 — 원본 직접 재생 먼저, 실패하면 서버 경유로 폴백
+        //         (+ host 학습으로 반복 실패 채널은 처음부터 경유)
+        // always: 처음부터 모든 스트림을 BookOasis 서버 경유(getStreamProxyUrl)로
+        //         재생한다. 브라우저가 스트림 서버에 직접 닿지 않으므로 CORS/403
+        //         차단을 우회하지만, 재생 트래픽 전부가 서버 회선을 거친다.
+        // off:    서버 경유를 아예 쓰지 않는다 — 직접 재생만 시도하고 폴백도 없다.
+        function getStreamProxyMode() {
+            const value = localStorage.getItem(LS.streamProxyMode);
+            return (value === 'always' || value === 'off') ? value : 'auto';
+        }
+
+        function canUseStreamProxy() {
+            return getStreamProxyMode() !== 'off';
+        }
+
 
         function cleanChannelName(str) {
             if (!str) return '';
@@ -888,6 +906,7 @@
             cfgEpgInterval.value = localStorage.getItem(LS.epgInterval) || '60';
             cfgPlaybackMode.value = localStorage.getItem(LS.playbackMode) || 'smooth';
             cfgAutoResume.checked = localStorage.getItem(LS.autoResume) === 'true';
+            if (cfgStreamProxyMode) cfgStreamProxyMode.value = getStreamProxyMode();
             modalOverlay.style.display = 'flex';
         }
 
@@ -907,6 +926,7 @@
                 epgInterval: cfgEpgInterval.value,
                 playbackMode: cfgPlaybackMode.value,
                 autoResume: cfgAutoResume.checked,
+                streamProxyMode: cfgStreamProxyMode ? cfgStreamProxyMode.value : 'auto',
             };
 
             // 서버 저장 실패에 대비한 로컬 백업(이 브라우저 한정 폴백)
@@ -916,6 +936,7 @@
             localStorage.setItem(LS.epgInterval, config.epgInterval);
             localStorage.setItem(LS.playbackMode, config.playbackMode);
             localStorage.setItem(LS.autoResume, config.autoResume ? 'true' : 'false');
+            localStorage.setItem(LS.streamProxyMode, config.streamProxyMode);
 
             const originalBtnHtml = btnModalSave.innerHTML;
             btnModalSave.disabled = true;
@@ -1308,8 +1329,9 @@
                     const ok = await attempt(url);
                     if (ok) return true;
                 } catch (e) {
-                    // 원본 실패 시 프록시로 폴백 검사
+                    // 원본 실패 시 프록시로 폴백 검사 (프록시 모드가 off면 폴백 없음)
                 }
+                if (!canUseStreamProxy()) return false;
                 const proxied = await resolveStreamUrl(url);
                 return attempt(proxied);
             }
@@ -1689,7 +1711,7 @@
                         // hls.js 내부 복구(recoverMediaError/startLoad)로는 못 푸는 CORS성 무음
                         // 정지일 가능성이 높다. 이 경우 매니페스트/레벨 에러와 동일하게 프록시로
                         // 전환하고, 이 host를 학습해둔다.
-                        if (!usingProxyFallback) {
+                        if (!usingProxyFallback && canUseStreamProxy()) {
                             console.warn('[ALIVE] 워치독: 원본 URL 무음 정지로 판단, 프록시로 전환 시도...');
                             usingProxyFallback = true;
                             markHostNeedsProxy(channel.url);
@@ -1788,7 +1810,7 @@
 
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
-                                if (isEarlyLoadError && !usingProxyFallback) {
+                                if (isEarlyLoadError && !usingProxyFallback && canUseStreamProxy()) {
                                     console.warn('[ALIVE] 원본 URL 재생 실패, 프록시 경유로 재시도...');
                                     usingProxyFallback = true;
                                     markHostNeedsProxy(channel.url);
@@ -1833,7 +1855,7 @@
                         if (!(isElementVisible(container) || isPipActive())) return;
                         console.warn('[ALIVE] 네이티브 재생 오류 감지:', videoElement.error);
 
-                        if (!usingProxyFallback) {
+                        if (!usingProxyFallback && canUseStreamProxy()) {
                             usingProxyFallback = true;
                             markHostNeedsProxy(channel.url);
                             resolveStreamUrl(channel.url).then((proxiedUrl) => {
@@ -1868,11 +1890,21 @@
 
             updateResolutionBadge(null);
 
-            // 기본 전략은 "원본 채널 URL(무프록시)로 먼저 시도" — CORS를 여는 CDN이면 이게 더
-            // 빠르고 안정적이라 그대로 유지한다. 다만 이 채널의 host가 최근에 원본으로는 안 되고
-            // 프록시가 필요하다고 학습된 적이 있으면(TTL 이내), 매번 실패할 게 뻔한 원본 시도를
-            // 건너뛰고 바로 프록시로 시작해 불필요한 대기/깜빡임을 없앤다.
-            if (shouldTryProxyFirst(channel.url)) {
+            // 스트림 프록시 모드에 따라 시작 URL을 정한다.
+            // - always: 처음부터 서버 경유로 시작한다 (직접 재생 시도 자체를 안 함).
+            // - auto: 기본 전략은 "원본 채널 URL(무프록시)로 먼저 시도" — CORS를 여는
+            //   CDN이면 이게 더 빠르고 안정적이다. 다만 이 채널의 host가 최근에 원본으로는
+            //   안 되고 프록시가 필요하다고 학습된 적이 있으면(TTL 이내), 매번 실패할 게
+            //   뻔한 원본 시도를 건너뛰고 바로 프록시로 시작해 대기/깜빡임을 없앤다.
+            // - off: 서버 경유를 쓰지 않고 원본으로만 재생한다 (아래 폴백들도 전부 비활성).
+            const proxyMode = getStreamProxyMode();
+            if (proxyMode === 'always') {
+                usingProxyFallback = true;
+                console.warn('[ALIVE] 스트림 프록시 모드=항상 서버 경유, 프록시로 바로 시작...');
+                resolveStreamUrl(channel.url).then((proxiedUrl) => {
+                    if (myToken === playToken) startHlsPlayback(proxiedUrl);
+                });
+            } else if (proxyMode !== 'off' && shouldTryProxyFirst(channel.url)) {
                 usingProxyFallback = true;
                 console.warn('[ALIVE] 이 host는 최근 프록시가 필요했던 것으로 학습됨, 프록시로 바로 시작...');
                 resolveStreamUrl(channel.url).then((proxiedUrl) => {
@@ -1964,6 +1996,9 @@
             if (typeof config.playbackMode === 'string') localStorage.setItem(LS.playbackMode, config.playbackMode);
             if (typeof config.autoResume === 'boolean') {
                 localStorage.setItem(LS.autoResume, config.autoResume ? 'true' : 'false');
+            }
+            if (config.streamProxyMode === 'auto' || config.streamProxyMode === 'always' || config.streamProxyMode === 'off') {
+                localStorage.setItem(LS.streamProxyMode, config.streamProxyMode);
             }
         }
 

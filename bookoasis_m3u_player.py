@@ -76,6 +76,7 @@ DEFAULT_CONFIG = {
     "epgInterval": "60",
     "playbackMode": "smooth",
     "autoResume": False,
+    "streamProxyMode": "auto",
 }
 
 
@@ -85,6 +86,7 @@ _MAX_SOURCES = 100
 _MAX_URL_LEN = 4096
 _MAX_NAME_LEN = 200
 _ALLOWED_PLAYBACK_MODES = {"smooth", "standard", "low_latency"}
+_ALLOWED_STREAM_PROXY_MODES = {"auto", "always", "off"}
 
 
 def _sanitize_config(config):
@@ -128,6 +130,9 @@ def _sanitize_config(config):
 
     if isinstance(config.get("autoResume"), bool):
         clean["autoResume"] = config["autoResume"]
+
+    if config.get("streamProxyMode") in _ALLOWED_STREAM_PROXY_MODES:
+        clean["streamProxyMode"] = config["streamProxyMode"]
 
     return clean
 
